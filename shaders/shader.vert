@@ -15,7 +15,24 @@ vec3 colors[3] = vec3[](
     vec3(0.0, 0.0, 1.0)
 );
 
+struct Vertex {
+    vec3 position;
+    float uv_x;
+    vec3 normal;
+    float uv_y;
+};
+
+layout(binding = 0) readonly buffer VertexBuffer{ 
+	Vertex vertices[];
+};
+
+layout( push_constant ) uniform constants
+{	
+	mat4 transform;
+} PushConstants;
+
 void main() {
-    gl_Position = vec4(positions[gl_VertexIndex], 0.0, 1.0);
-    fragColor = colors[gl_VertexIndex];
+    Vertex v = vertices[gl_VertexIndex];
+    gl_Position = PushConstants.transform * vec4(v.position, 1.0);
+    fragColor = vec3(1,0,0);
 }

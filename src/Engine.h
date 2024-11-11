@@ -3,42 +3,76 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#include "CommonTypes.h"
+
+#define VMA_IMPLEMENTATION
+#include "vk_mem_alloc.h"
+
 #include <VkBootstrap.h>
 
-#include <iostream>
-#include <stdexcept>
-#include <cstdlib>
-#include <vector>
-#include <optional>
-#include <fstream>
-
 #include <shaderc/shaderc.hpp>
+
+#include "AssetLoader.h"
+
+#include "Camera.h"
+
+const int MAX_FRAMES = 2;
 
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
 
-static std::vector<char> ReadFile(const std::string& filename) 
-{
-    std::ifstream file(filename, std::ios::ate | std::ios::binary);
+std::vector<Asset> assets;
 
-    if (!file.is_open()) {
-        throw std::runtime_error("failed to open file!");
+Camera camera;
+
+float lastX = WIDTH / 2.0f;
+float lastY = HEIGHT / 2.0f;
+bool firstMouse = true;
+
+float deltaTime = 0.0f;
+float lastFrame = 0.0f;
+
+void MouseCallback(GLFWwindow* window, double xposIn, double yposIn)
+{
+    float xpos = static_cast<float>(xposIn);
+    float ypos = static_cast<float>(yposIn);
+
+    if (firstMouse)
+    {
+        lastX = xpos;
+        lastY = ypos;
+        firstMouse = false;
     }
 
-    size_t fileSize = (size_t)file.tellg();
-    std::vector<char> buffer(fileSize);
+    float xoffset = xpos - lastX;
+    float yoffset = ypos - lastY;
 
-    file.seekg(0);
-    file.read(buffer.data(), fileSize);
+    lastX = xpos;
+    lastY = ypos;
 
-    file.close();
+    camera.ProcessMouseMovement(xoffset, yoffset);
+}
 
-    return buffer;
+void ProcessInput(GLFWwindow* window, float deltaTime)
+{
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+        glfwSetWindowShouldClose(window, true);
+
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+        camera.ProcessKeyboard(FORWARD, deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+        camera.ProcessKeyboard(BACKWARD, deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+        camera.ProcessKeyboard(LEFT, deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+        camera.ProcessKeyboard(RIGHT, deltaTime);
 }
 
 class UEngine {
 private:
     GLFWwindow* window;
+
+    DeletionQueue deletionQueue;
 
     vkb::Instance vkb_instance;
 
@@ -49,6 +83,8 @@ private:
     VkQueue presentQueue;
 
     VkSurfaceKHR surface;
+
+    VmaAllocator allocator;
 
     vkb::Swapchain vkb_swapchain;
 
@@ -64,26 +100,54 @@ private:
 
     VkRenderPass renderPass;
 
+    VkDescriptorSetLayout descriptorSetLayout;
+
+    VkDescriptorPool descriptorPool;
+
+    std::vector<VkDescriptorSet> descriptorSets = std::vector<VkDescriptorSet>(MAX_FRAMES);
+
     VkPipelineLayout pipelineLayout;
 
     VkPipeline graphicsPipeline;
 
     VkCommandPool commandPool;
 
-    VkCommandBuffer commandBuffer;
+    struct AllocatedBuffer {
+        VkBuffer buffer;
+        VmaAllocation allocation;
+        VmaAllocationInfo info;
+    };
 
-    VkSemaphore imageAvailableSemaphore;
-    VkSemaphore renderFinishedSemaphore;
-    VkFence inFlightFence;
+    struct FrameData
+    {
+        VkCommandBuffer commandBuffer;
+        VkSemaphore imageAvailableSemaphore;
+        VkSemaphore renderFinishedSemaphore;
+        VkFence renderFence;
+    };
+
+    std::vector<FrameData> frames;
+
+    uint32_t currentFrame = 0;
+
+    AllocatedBuffer vertexBuffer;
+    AllocatedBuffer indexBuffer;
+
+    Asset asset;
 
 public:
     void Run() {
         InitWindow();
         InitVulkan();
+        CreateSwapChain();
         CreateRenderPass();
+        CreateCommandPool();
+        LoadAssets();
+        CreateDescriptorSetLayout();
+        CreateDescriptorPool();
+        CreateDescriptorSets();
         CreateGraphicsPipeline();
         CreateFrameBuffers();
-        CreateCommandPool();
         CreateCommandBuffer();
         CreateSyncPrimitives();
         MainLoop();
@@ -97,11 +161,17 @@ private:
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-        glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+        glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
         window = glfwCreateWindow(WIDTH, HEIGHT, "Engine", nullptr, nullptr);
 
         glfwSetWindowPos(window, 880, 420);
+
+        camera = Camera(glm::vec3(0.0f, 0.0f, 3.0f));
+
+        glfwSetCursorPosCallback(window, MouseCallback);
+
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     }
 
     void InitVulkan() {
@@ -116,10 +186,18 @@ private:
         }
         vkb_instance = instance_builder_return.value();
 
+        deletionQueue.push_function([&]() {
+            vkb::destroy_instance(vkb_instance);
+            });
+
         if (glfwCreateWindowSurface(vkb_instance.instance, window, NULL, &surface) != VK_SUCCESS) 
         {
             throw std::runtime_error("Failed to create surface!");
         }
+
+        deletionQueue.push_function([&]() {
+            vkb::destroy_surface(vkb_instance, surface);
+            });
 
         vkb::PhysicalDeviceSelector phys_device_selector(vkb_instance);
         auto physical_device_selector_return = phys_device_selector
@@ -137,6 +215,10 @@ private:
         }
         vkb_device = dev_ret.value();
 
+        deletionQueue.push_function([&]() {
+            vkb::destroy_device(vkb_device);
+            });       
+
         auto queue_ret = vkb_device.get_queue(vkb::QueueType::graphics);
         if (!queue_ret) {
             throw std::runtime_error("Failed to get graphics queue!");
@@ -149,8 +231,127 @@ private:
         }
         presentQueue = queue_ret.value();
 
-        swapChainExtent.height = HEIGHT;
-        swapChainExtent.width = WIDTH;
+        VmaAllocatorCreateInfo allocatorInfo = {};
+        allocatorInfo.physicalDevice = phys_device;
+        allocatorInfo.device = vkb_device;
+        allocatorInfo.instance = vkb_instance;
+        //allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+        vmaCreateAllocator(&allocatorInfo, &allocator);
+
+        deletionQueue.push_function([&]() {
+            vmaDestroyAllocator(allocator);
+            });
+    }
+
+    void LoadAssets()
+    {
+		asset = AssetLoader::LoadAsset("cube.fbx");
+
+		assets.push_back(asset);
+
+        const size_t vertexBufferSize = asset.meshes[0].vertices.size() * sizeof(Vertex);
+        const size_t indexBufferSize = asset.meshes[0].indices.size() * sizeof(uint32_t);
+
+        vertexBuffer = CreateBuffer(vertexBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            VMA_MEMORY_USAGE_GPU_ONLY);
+
+        indexBuffer = CreateBuffer(indexBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            VMA_MEMORY_USAGE_GPU_ONLY);
+
+        deletionQueue.push_function([&]() {
+            vmaDestroyBuffer(allocator, vertexBuffer.buffer, vertexBuffer.allocation);
+            vmaDestroyBuffer(allocator, indexBuffer.buffer, indexBuffer.allocation);
+            });
+
+
+        AllocatedBuffer staging = CreateBuffer(vertexBufferSize + indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+
+        void* data = staging.allocation->GetMappedData();
+
+        // copy vertex buffer
+        memcpy(data, asset.meshes[0].vertices.data(), vertexBufferSize);
+        // copy index buffer
+        memcpy((char*)data + vertexBufferSize, asset.meshes[0].indices.data(), indexBufferSize);
+
+
+        // copy staging buffer to vertex and index buffer
+        VkCommandBufferAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocInfo.commandPool = commandPool;
+        allocInfo.commandBufferCount = 1;
+
+        VkCommandBuffer commandBuffer;
+        vkAllocateCommandBuffers(vkb_device, &allocInfo, &commandBuffer);
+
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+        vkBeginCommandBuffer(commandBuffer, &beginInfo);
+
+        VkBufferCopy vertexCopy{ 0 };
+        vertexCopy.dstOffset = 0;
+        vertexCopy.srcOffset = 0;
+        vertexCopy.size = vertexBufferSize;
+
+        vkCmdCopyBuffer(commandBuffer, staging.buffer, vertexBuffer.buffer, 1, &vertexCopy);
+
+        VkBufferCopy indexCopy{ 0 };
+        indexCopy.dstOffset = 0;
+        indexCopy.srcOffset = vertexBufferSize;
+        indexCopy.size = indexBufferSize;
+
+        vkCmdCopyBuffer(commandBuffer, staging.buffer, indexBuffer.buffer, 1, &indexCopy);
+
+        vkEndCommandBuffer(commandBuffer);
+
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &commandBuffer;
+
+        vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+        vkQueueWaitIdle(graphicsQueue);
+
+        vkFreeCommandBuffers(vkb_device, commandPool, 1, &commandBuffer);
+
+        vmaDestroyBuffer(allocator, staging.buffer, staging.allocation);
+    }
+
+    AllocatedBuffer CreateBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage)
+    {
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.pNext = nullptr;
+        bufferInfo.size = allocSize;
+        bufferInfo.usage = usage;
+
+        VmaAllocationCreateInfo vmaallocInfo{};
+        vmaallocInfo.usage = memoryUsage;
+        vmaallocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+        AllocatedBuffer newBuffer;
+
+        if(vmaCreateBuffer(allocator, &bufferInfo, &vmaallocInfo, &newBuffer.buffer, &newBuffer.allocation, &newBuffer.info) != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to allocate buffer!");
+		}
+
+        return newBuffer;
+    }
+
+    void CreateSwapChain()
+    {
+        int width, height;
+        glfwGetFramebufferSize(window, &width, &height);
+        while (width == 0 || height == 0) {
+            glfwGetFramebufferSize(window, &width, &height);
+            glfwWaitEvents();
+        }
+
+        swapChainExtent.height = static_cast<uint32_t>(height);
+        swapChainExtent.width = static_cast<uint32_t>(width);
 
         swapChainSurfaceFormat.format = VK_FORMAT_B8G8R8A8_SRGB;
         swapChainSurfaceFormat.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
@@ -166,7 +367,7 @@ private:
         vkb_swapchain = swap_ret.value();
 
         swapChainImages = vkb_swapchain.get_images().value();
-        swapChainImageViews = vkb_swapchain.get_image_views().value();
+        swapChainImageViews = vkb_swapchain.get_image_views().value();        
     }
 
     void CreateRenderPass()
@@ -214,7 +415,35 @@ private:
             throw std::runtime_error("failed to create render pass!");
         }
 
+        deletionQueue.push_function([&]() {
+            vkDestroyRenderPass(vkb_device, renderPass, nullptr);
+            });
+        
+    }
 
+    void CreateDescriptorSetLayout()
+    {
+        // Vertex Storage Buffer
+        VkDescriptorSetLayoutBinding vertexBufferLayoutBinding{};
+        vertexBufferLayoutBinding.binding = 0;
+        vertexBufferLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        vertexBufferLayoutBinding.descriptorCount = 1;
+        vertexBufferLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+        std::vector<VkDescriptorSetLayoutBinding> bindings = { vertexBufferLayoutBinding };
+
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+        layoutInfo.pBindings = bindings.data();
+
+        if (vkCreateDescriptorSetLayout(vkb_device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create descriptor set layout!");
+        }
+
+        deletionQueue.push_function([&]() {
+			vkDestroyDescriptorSetLayout(vkb_device, descriptorSetLayout, nullptr);
+			});
     }
 
     void CreateGraphicsPipeline()
@@ -295,7 +524,7 @@ private:
         rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
         rasterizer.lineWidth = 1.0f;
         rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-        rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+        rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
         rasterizer.depthBiasEnable = VK_FALSE;
         rasterizer.depthBiasConstantFactor = 0.0f; // Optional
         rasterizer.depthBiasClamp = 0.0f; // Optional
@@ -333,17 +562,28 @@ private:
         colorBlending.blendConstants[2] = 0.0f; // Optional
         colorBlending.blendConstants[3] = 0.0f; // Optional
 
+        VkPushConstantRange pushConstantRange{};
+        pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+        pushConstantRange.offset = 0;
+        pushConstantRange.size = sizeof(GPUPushConstants);
+        pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
         //pipeline layout
         VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
         pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        pipelineLayoutInfo.setLayoutCount = 0; // Optional
-        pipelineLayoutInfo.pSetLayouts = nullptr; // Optional
-        pipelineLayoutInfo.pushConstantRangeCount = 0; // Optional
-        pipelineLayoutInfo.pPushConstantRanges = nullptr; // Optional
+        pipelineLayoutInfo.setLayoutCount = 1;
+        pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
+        pipelineLayoutInfo.pushConstantRangeCount = 1; // Optional
+        pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange; // Optional
 
         if (vkCreatePipelineLayout(vkb_device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create pipeline layout!");
         }
+
+        deletionQueue.push_function([&]() {
+            vkDestroyPipelineLayout(vkb_device, pipelineLayout, nullptr);
+            });
+        
 
         //pipeline
         VkGraphicsPipelineCreateInfo pipelineInfo{};
@@ -368,6 +608,9 @@ private:
             throw std::runtime_error("Failed to create graphics pipeline!");
         }
 
+        deletionQueue.push_function([&]() {
+            vkDestroyPipeline(vkb_device, graphicsPipeline, nullptr);
+            });
 
         vkDestroyShaderModule(vkb_device, fragShaderModule, nullptr);
         vkDestroyShaderModule(vkb_device, vertShaderModule, nullptr);
@@ -397,9 +640,27 @@ private:
             {
                 throw std::runtime_error("failed to create framebuffer!");
             }
+        }     
+    }
+
+    void RecreateSwapChain()
+    {
+        vkDeviceWaitIdle(vkb_device);
+
+        std::cout << "Recreate Swapchain!" << std::endl;
+
+        for (size_t i = 0; i < swapChainFramebuffers.size(); i++) {
+            vkDestroyFramebuffer(vkb_device, swapChainFramebuffers[i], nullptr);
         }
 
+        for (size_t i = 0; i < swapChainImageViews.size(); i++) {
+            vkDestroyImageView(vkb_device, swapChainImageViews[i], nullptr);
+        }
 
+        vkb::destroy_swapchain(vkb_swapchain);
+
+        CreateSwapChain();
+        CreateFrameBuffers();
     }
 
     void CreateCommandPool()
@@ -413,19 +674,87 @@ private:
             throw std::runtime_error("Failed to create command pool!");
         }
 
+        deletionQueue.push_function([&]() {
+            vkDestroyCommandPool(vkb_device, commandPool, nullptr);
+            });   
+    }
 
+    void CreateDescriptorPool()
+    {
+        std::vector<VkDescriptorPoolSize> poolSizes(1);
+        poolSizes[0].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES);
+
+        VkDescriptorPoolCreateInfo poolInfo{};
+        poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+        poolInfo.pPoolSizes = poolSizes.data();
+        poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES);
+
+        if (vkCreateDescriptorPool(vkb_device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create descriptor pool!");
+        }
+
+        deletionQueue.push_function([&]() {
+			vkDestroyDescriptorPool(vkb_device, descriptorPool, nullptr);
+			});
+    }
+
+    void CreateDescriptorSets()
+    {
+        std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES, descriptorSetLayout);
+
+		VkDescriptorSetAllocateInfo allocInfo{};
+		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		allocInfo.descriptorPool = descriptorPool;
+		allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES);
+		allocInfo.pSetLayouts = layouts.data();
+
+		
+		if (vkAllocateDescriptorSets(vkb_device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to allocate descriptor sets!");
+		}
+
+		for (size_t i = 0; i < MAX_FRAMES; i++) 
+        {
+			VkDescriptorBufferInfo vertexBufferInfo{};
+			vertexBufferInfo.buffer = vertexBuffer.buffer;
+			vertexBufferInfo.offset = 0;
+			vertexBufferInfo.range = asset.meshes[0].vertices.size() * sizeof(Vertex);
+
+			std::vector<VkWriteDescriptorSet> descriptorWrites(1);
+
+			descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			descriptorWrites[0].dstSet = descriptorSets[i];
+			descriptorWrites[0].dstBinding = 0;
+			descriptorWrites[0].dstArrayElement = 0;
+			descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+			descriptorWrites[0].descriptorCount = 1;
+			descriptorWrites[0].pBufferInfo = &vertexBufferInfo;
+
+            vkUpdateDescriptorSets(vkb_device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+        }
     }
 
     void CreateCommandBuffer()
     {
+        frames.resize(MAX_FRAMES);
+
+        //temp array to hold command buffers
+        std::vector<VkCommandBuffer> commandBuffers(frames.size());
+
         VkCommandBufferAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
         allocInfo.commandPool = commandPool;
         allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        allocInfo.commandBufferCount = 1;
+        allocInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.size());
 
-        if (vkAllocateCommandBuffers(vkb_device, &allocInfo, &commandBuffer) != VK_SUCCESS) {
+        if (vkAllocateCommandBuffers(vkb_device, &allocInfo, commandBuffers.data()) != VK_SUCCESS) {
             throw std::runtime_error("Failed to allocate command buffers!");
+        }
+
+        for (size_t i = 0; i < frames.size(); i++) {
+            frames[i].commandBuffer = commandBuffers[i];
         }
     }
 
@@ -469,7 +798,22 @@ private:
         scissor.extent = swapChainExtent;
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-        vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
+
+        vkCmdBindIndexBuffer(commandBuffer, indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+
+        glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 100.0f);
+
+        glm::mat4 view = camera.GetViewMatrix();
+
+        glm::mat4 model = glm::mat4(1.0f);
+
+        GPUPushConstants push{};
+        push.transform = projection * view * model;
+
+        vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUPushConstants), &push);
+
+        vkCmdDrawIndexed(commandBuffer, asset.meshes[0].indices.size(), 1, 0, 0, 0);
 
         vkCmdEndRenderPass(commandBuffer);
 
@@ -481,49 +825,70 @@ private:
 
     void CreateSyncPrimitives()
     {
-        VkSemaphoreCreateInfo semaphoreInfo{};
-        semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
-        VkFenceCreateInfo fenceInfo{};
-        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+        for (int i = 0; i < frames.size(); i++)
+        {
+            VkSemaphoreCreateInfo semaphoreInfo{};
+            semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
-        if (vkCreateSemaphore(vkb_device, &semaphoreInfo, nullptr, &imageAvailableSemaphore) != VK_SUCCESS ||
-            vkCreateSemaphore(vkb_device, &semaphoreInfo, nullptr, &renderFinishedSemaphore) != VK_SUCCESS ||
-            vkCreateFence(vkb_device, &fenceInfo, nullptr, &inFlightFence) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create sync primitives!");
-        }
+            VkFenceCreateInfo fenceInfo{};
+            fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+            fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+            if (vkCreateSemaphore(vkb_device, &semaphoreInfo, nullptr, &frames[i].imageAvailableSemaphore) != VK_SUCCESS ||
+                vkCreateSemaphore(vkb_device, &semaphoreInfo, nullptr, &frames[i].renderFinishedSemaphore) != VK_SUCCESS ||
+                vkCreateFence(vkb_device, &fenceInfo, nullptr, &frames[i].renderFence) != VK_SUCCESS) {
+                throw std::runtime_error("Failed to create sync primitives!");
+
+                
+            }
+
+            deletionQueue.push_function([this, i]() {
+                vkDestroySemaphore(vkb_device, frames[i].imageAvailableSemaphore, nullptr);
+                vkDestroySemaphore(vkb_device, frames[i].renderFinishedSemaphore, nullptr);
+                vkDestroyFence(vkb_device, frames[i].renderFence, nullptr);
+                });
+        }     
     }
 
     void Draw()
     {
         //wait for previous frame
-        vkWaitForFences(vkb_device, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
-        vkResetFences(vkb_device, 1, &inFlightFence);
+        vkWaitForFences(vkb_device, 1, &frames[currentFrame].renderFence, VK_TRUE, UINT64_MAX);
 
         uint32_t imageIndex;
-        vkAcquireNextImageKHR(vkb_device, vkb_swapchain, UINT64_MAX, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+        VkResult result = vkAcquireNextImageKHR(vkb_device, vkb_swapchain, UINT64_MAX, frames[currentFrame].imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
 
-        vkResetCommandBuffer(commandBuffer, 0);
+        if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+            RecreateSwapChain();
+            return;
+        }
+        else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+            throw std::runtime_error("Failed to acquire swap chain image!");
+        }
 
-        RecordCommandBuffer(commandBuffer, imageIndex);
+        vkResetFences(vkb_device, 1, &frames[currentFrame].renderFence);
+
+        vkResetCommandBuffer(frames[currentFrame].commandBuffer, 0);
+
+        RecordCommandBuffer(frames[currentFrame].commandBuffer, imageIndex);
 
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-        VkSemaphore waitSemaphores[] = { imageAvailableSemaphore };
+        VkSemaphore waitSemaphores[] = { frames[currentFrame].imageAvailableSemaphore };
         VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
         submitInfo.waitSemaphoreCount = 1;
         submitInfo.pWaitSemaphores = waitSemaphores;
         submitInfo.pWaitDstStageMask = waitStages;
         submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &commandBuffer;
+        submitInfo.pCommandBuffers = &frames[currentFrame].commandBuffer;
 
-        VkSemaphore signalSemaphores[] = { renderFinishedSemaphore };
+        VkSemaphore signalSemaphores[] = { frames[currentFrame].renderFinishedSemaphore };
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
 
-        if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFence) != VK_SUCCESS) {
+        if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, frames[currentFrame].renderFence) != VK_SUCCESS) {
             throw std::runtime_error("Failed to submit draw command buffer!");
         }
 
@@ -539,11 +904,26 @@ private:
         presentInfo.pImageIndices = &imageIndex;
         presentInfo.pResults = nullptr;
 
-        vkQueuePresentKHR(presentQueue, &presentInfo);
+        result = vkQueuePresentKHR(presentQueue, &presentInfo);
+
+        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+            RecreateSwapChain();
+        }
+        else if (result != VK_SUCCESS) {
+            throw std::runtime_error("Failed to present swap chain image!");
+        }
+
+        currentFrame = (currentFrame + 1) % MAX_FRAMES;
     }
 
     void MainLoop() {
         while (!glfwWindowShouldClose(window)) {
+            float currentFrame = static_cast<float>(glfwGetTime());
+            deltaTime = currentFrame - lastFrame;
+            lastFrame = currentFrame;
+
+            ProcessInput(window, deltaTime);
+
             glfwPollEvents();
             Draw();
         }
@@ -552,33 +932,17 @@ private:
     }
 
     void Cleanup() {
-        vkDestroySemaphore(vkb_device, imageAvailableSemaphore, nullptr);
-        vkDestroySemaphore(vkb_device, renderFinishedSemaphore, nullptr);
-        vkDestroyFence(vkb_device, inFlightFence, nullptr);
-
-        vkDestroyCommandPool(vkb_device, commandPool, nullptr);
-
-        for (auto framebuffer : swapChainFramebuffers) {
-            vkDestroyFramebuffer(vkb_device, framebuffer, nullptr);
+        for (size_t i = 0; i < swapChainFramebuffers.size(); i++) {
+            vkDestroyFramebuffer(vkb_device, swapChainFramebuffers[i], nullptr);
         }
 
-        vkDestroyPipeline(vkb_device, graphicsPipeline, nullptr);
-
-        vkDestroyPipelineLayout(vkb_device, pipelineLayout, nullptr);
-
-        vkDestroyRenderPass(vkb_device, renderPass, nullptr);
-
-        for (auto imageView : swapChainImageViews) {
-            vkDestroyImageView(vkb_device, imageView, nullptr);
+        for (size_t i = 0; i < swapChainImageViews.size(); i++) {
+            vkDestroyImageView(vkb_device, swapChainImageViews[i], nullptr);
         }
 
         vkb::destroy_swapchain(vkb_swapchain);
 
-        vkb::destroy_device(vkb_device);
-
-        vkb::destroy_surface(vkb_instance, surface);
-
-        vkb::destroy_instance(vkb_instance);
+        deletionQueue.flush();
 
         glfwDestroyWindow(window);
 
