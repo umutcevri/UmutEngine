@@ -49,6 +49,8 @@ public:
 			Vertex vertex;
 			vertex.position = glm::vec3(mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z);
 			vertex.normal = glm::vec3(mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z);
+			vertex.uv_x = mesh->mTextureCoords[0][i].x;
+			vertex.uv_y = mesh->mTextureCoords[0][i].y;
 
 			meshData.vertices.push_back(vertex);
 		}

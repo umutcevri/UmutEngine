@@ -2,6 +2,7 @@
 #extension GL_KHR_vulkan_glsl : enable
 
 layout(location = 0) out vec3 fragColor;
+layout (location = 1) out vec2 outUV;
 
 vec2 positions[3] = vec2[](
     vec2(0.0, -0.5),
@@ -34,5 +35,7 @@ layout( push_constant ) uniform constants
 void main() {
     Vertex v = vertices[gl_VertexIndex];
     gl_Position = PushConstants.transform * vec4(v.position, 1.0);
+    outUV.x = v.uv_x;
+	outUV.y = v.uv_y;
     fragColor = vec3(1,0,0);
 }
