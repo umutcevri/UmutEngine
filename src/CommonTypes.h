@@ -1,14 +1,16 @@
 #pragma once
 
 #include <iostream>
-#include <stdexcept>
-#include <cstdlib>
 #include <vector>
-#include <optional>
 #include <fstream>
 #include <deque>
 #include <functional>
+#include <algorithm>
+#include <chrono>
+#include <filesystem>
+#include <unordered_set>
 
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_FORCE_RADIANS
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -25,7 +27,11 @@ static std::vector<char> ReadFile(const std::string& filename)
     std::vector<char> buffer(fileSize);
 
     file.seekg(0);
-    file.read(buffer.data(), fileSize);
+
+    if(!file.read(buffer.data(), fileSize))
+	{
+		throw std::runtime_error("Failed to read file!");
+	}
 
     file.close();
 
@@ -57,6 +63,8 @@ struct Vertex {
     float uv_x;
     glm::vec3 normal;
     float uv_y;
+    glm::vec3 color;
+    int diffuseTextureID;
 };
 
 struct MeshData
@@ -67,9 +75,10 @@ struct MeshData
     glm::mat4 model;
 };
 
-struct Asset
+struct AssetData
 {
-    std::vector<MeshData> meshes;
+    std::vector<Vertex> vertices;
+    std::vector<uint32_t> indices;
 };
 
 struct GPUPushConstants

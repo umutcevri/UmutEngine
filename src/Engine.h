@@ -19,12 +19,14 @@
 
 #include "Camera.h"
 
+#include <ktx.h>
+
+const int MAX_TEXTURE_COUNT = 256;
+
 const int MAX_FRAMES = 2;
 
-const uint32_t WIDTH = 800;
-const uint32_t HEIGHT = 600;
-
-std::vector<Asset> assets;
+const uint32_t WIDTH = 1920;
+const uint32_t HEIGHT = 1080;
 
 Camera camera;
 
@@ -48,7 +50,7 @@ void MouseCallback(GLFWwindow* window, double xposIn, double yposIn)
     }
 
     float xoffset = xpos - lastX;
-    float yoffset = ypos - lastY;
+    float yoffset = lastY - ypos;
 
     lastX = xpos;
     lastY = ypos;
@@ -138,13 +140,19 @@ private:
     AllocatedBuffer vertexBuffer;
     AllocatedBuffer indexBuffer;
 
-    Asset asset;
-
-    VkImage textureImage;
-
-    VkImageView textureImageView;
+    AssetData assets{};
 
     VkSampler textureSampler;
+
+    VkImage depthImage;
+    
+    VkImageView depthImageView;
+
+    VkFormat depthFormat = VK_FORMAT_D32_SFLOAT_S8_UINT;
+
+    std::vector<VkImageView> images;
+
+    std::vector<std::string> texturePaths;
 
 public:
     void Run() {
@@ -154,8 +162,7 @@ public:
         CreateRenderPass();
         CreateCommandPool();
         LoadAssets();
-        CreateTextureImage();
-        CreateTextureImageView();
+        CreateDepthResources();
         CreateTextureSampler();
         CreateDescriptorSetLayout();
         CreateDescriptorPool();
@@ -179,9 +186,9 @@ private:
 
         window = glfwCreateWindow(WIDTH, HEIGHT, "Engine", nullptr, nullptr);
 
-        glfwSetWindowPos(window, 880, 420);
+        glfwSetWindowPos(window, 0, 0);
 
-        camera = Camera(glm::vec3(0.0f, 0.0f, 3.0f));
+        camera = Camera(glm::vec3(0.0f, 1.0f, 0.0f));
 
         glfwSetCursorPosCallback(window, MouseCallback);
 
@@ -295,12 +302,11 @@ private:
 
     void LoadAssets()
     {
-		asset = AssetLoader::LoadAsset("assets/untitled.fbx");
+		AssetLoader::LoadAsset("assets/NewSponza_Main_glTF_003.gltf", &assets, texturePaths);
+        
 
-		assets.push_back(asset);
-
-        const size_t vertexBufferSize = asset.meshes[0].vertices.size() * sizeof(Vertex);
-        const size_t indexBufferSize = asset.meshes[0].indices.size() * sizeof(uint32_t);
+        const size_t vertexBufferSize = assets.vertices.size() * sizeof(Vertex);
+        const size_t indexBufferSize = assets.indices.size() * sizeof(uint32_t);
 
         vertexBuffer = CreateBuffer(vertexBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             VMA_MEMORY_USAGE_GPU_ONLY);
@@ -319,9 +325,9 @@ private:
         void* data = staging.allocation->GetMappedData();
 
         // copy vertex buffer
-        memcpy(data, asset.meshes[0].vertices.data(), vertexBufferSize);
+        memcpy(data, assets.vertices.data(), vertexBufferSize);
         // copy index buffer
-        memcpy((char*)data + vertexBufferSize, asset.meshes[0].indices.data(), indexBufferSize);
+        memcpy((char*)data + vertexBufferSize, assets.indices.data(), indexBufferSize);
 
 
         // copy staging buffer to vertex and index buffer
@@ -343,40 +349,59 @@ private:
         
 
         vmaDestroyBuffer(allocator, staging.buffer, staging.allocation);
+        
+        for(std::string texturePath : texturePaths)
+		{
+			CreateTextureImage(texturePath);
+		}
+        
     }
 
-    void CreateTextureImage()
+    void CreateDepthResources()
     {
-        int texWidth, texHeight, texChannels;
-        stbi_uc* pixels = stbi_load("assets/image.jpg", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
-        VkDeviceSize imageSize = texWidth * texHeight * 4;
+    
+		CreateImage(swapChainExtent.width, swapChainExtent.height, depthFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, depthImage);
 
-        if (!pixels) {
-            throw std::runtime_error("Failed to load texture image!");
+		depthImageView = CreateImageView(depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+        TransitionImageLayout(depthImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+    }
+
+    void CreateTextureImage(std::string texturePath)
+    {      
+        texturePath = texturePath.append(".ktx2");
+
+        ktxTexture2* ktx_texture;
+        
+        KTX_error_code result = ktxTexture_CreateFromNamedFile(texturePath.c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, (ktxTexture**)&ktx_texture);
+        if (result != KTX_SUCCESS)
+        {
+            throw std::runtime_error("Could not load the requested image file.");
         }
-
-        AllocatedBuffer stagingBuffer = CreateBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    
+        AllocatedBuffer stagingBuffer = CreateBuffer(ktx_texture->dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
 
         void* data = stagingBuffer.allocation->GetMappedData();
 
-        memcpy(data, pixels, static_cast<size_t>(imageSize));
+        memcpy(data, ktx_texture->pData, ktx_texture->dataSize);
 
-        stbi_image_free(pixels);
+        VkImage textureImage;
 
-        CreateImage(texWidth, texHeight, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, textureImage);
+        VkFormat format = (VkFormat)ktx_texture->vkFormat;
 
-        TransitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        CreateImage(ktx_texture->baseWidth, ktx_texture->baseHeight, format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, textureImage);
 
-        CopyBufferToImage(stagingBuffer.buffer, textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
+        TransitionImageLayout(textureImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
-        TransitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        CopyBufferToImage(stagingBuffer.buffer, textureImage, ktx_texture->baseWidth, ktx_texture->baseHeight);
+
+        TransitionImageLayout(textureImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
         vmaDestroyBuffer(allocator, stagingBuffer.buffer, stagingBuffer.allocation);
-    }
+        
+        VkImageView textureImageView = CreateImageView(textureImage, format, VK_IMAGE_ASPECT_COLOR_BIT);
 
-    void CreateTextureImageView()
-    {
-        textureImageView = CreateImageView(textureImage, VK_FORMAT_R8G8B8A8_SRGB);
+        images.push_back(textureImageView);
     }
 
     void CreateTextureSampler()
@@ -412,14 +437,14 @@ private:
             });
     }
 
-    VkImageView CreateImageView(VkImage image, VkFormat format) 
+    VkImageView CreateImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) 
     {
         VkImageViewCreateInfo viewInfo{};
         viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         viewInfo.image = image;
         viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
         viewInfo.format = format;
-        viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        viewInfo.subresourceRange.aspectMask = aspectFlags;
         viewInfo.subresourceRange.baseMipLevel = 0;
         viewInfo.subresourceRange.levelCount = 1;
         viewInfo.subresourceRange.baseArrayLayer = 0;
@@ -473,7 +498,7 @@ private:
 			});
     }
 
-    void TransitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
+    void TransitionImageLayout(VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout)
     {
         OneTimeSubmit([&](VkCommandBuffer cmd) {
             VkImageMemoryBarrier barrier{};
@@ -491,24 +516,44 @@ private:
             barrier.srcAccessMask = 0; // TODO
             barrier.dstAccessMask = 0; // TODO
 
+            if (newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) 
+            {
+                barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+            }
+            else 
+            {
+                barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            }
+
             VkPipelineStageFlags sourceStage;
             VkPipelineStageFlags destinationStage;
 
-            if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+            if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) 
+            {
                 barrier.srcAccessMask = 0;
                 barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 
                 sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
                 destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
             }
-            else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+            else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) 
+            {
                 barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
                 barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
                 sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
                 destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
             }
-            else {
+            else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) 
+            {
+                barrier.srcAccessMask = 0;
+                barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+                sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+                destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+            }
+            else 
+            {
                 throw std::invalid_argument("Unsupported layout transition!");
             }
 
@@ -608,6 +653,20 @@ private:
 
     void CreateRenderPass()
     {
+        VkAttachmentDescription depthAttachment{};
+        depthAttachment.format = depthFormat;
+        depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+        depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+        VkAttachmentReference depthAttachmentRef{};
+        depthAttachmentRef.attachment = 1;
+        depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
         VkAttachmentDescription colorAttachment{};
         colorAttachment.format = swapChainSurfaceFormat.format;
         colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -627,21 +686,23 @@ private:
         subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
         subpass.colorAttachmentCount = 1;
         subpass.pColorAttachments = &colorAttachmentRef;
+        subpass.pDepthStencilAttachment = &depthAttachmentRef;
 
         //subpass dependency
         VkSubpassDependency dependency{};
         dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
         dependency.dstSubpass = 0;
-        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
         dependency.srcAccessMask = 0;
-        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
         //render pass
         VkRenderPassCreateInfo renderPassInfo{};
+        std::vector<VkAttachmentDescription> attachments = { colorAttachment, depthAttachment };
         renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-        renderPassInfo.attachmentCount = 1;
-        renderPassInfo.pAttachments = &colorAttachment;
+        renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+        renderPassInfo.pAttachments = attachments.data();
         renderPassInfo.subpassCount = 1;
         renderPassInfo.pSubpasses = &subpass;
         renderPassInfo.dependencyCount = 1;
@@ -668,7 +729,7 @@ private:
 
         VkDescriptorSetLayoutBinding samplerLayoutBinding{};
         samplerLayoutBinding.binding = 1;
-        samplerLayoutBinding.descriptorCount = 1;
+        samplerLayoutBinding.descriptorCount = MAX_TEXTURE_COUNT;
         samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         samplerLayoutBinding.pImmutableSamplers = nullptr;
         samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
@@ -805,11 +866,26 @@ private:
         colorBlending.blendConstants[2] = 0.0f; // Optional
         colorBlending.blendConstants[3] = 0.0f; // Optional
 
+        //push constants
         VkPushConstantRange pushConstantRange{};
         pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
         pushConstantRange.offset = 0;
         pushConstantRange.size = sizeof(GPUPushConstants);
         pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+        //depth stencil
+        VkPipelineDepthStencilStateCreateInfo depthStencil{};
+        depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+        depthStencil.depthTestEnable = VK_TRUE;
+        depthStencil.depthWriteEnable = VK_TRUE;
+        depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+        depthStencil.depthBoundsTestEnable = VK_FALSE;
+        depthStencil.minDepthBounds = 0.0f; // Optional
+        depthStencil.maxDepthBounds = 1.0f; // Optional
+        depthStencil.stencilTestEnable = VK_FALSE;
+        depthStencil.front = {}; // Optional
+        depthStencil.back = {}; // Optional
+        
 
         //pipeline layout
         VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
@@ -838,7 +914,7 @@ private:
         pipelineInfo.pViewportState = &viewportState;
         pipelineInfo.pRasterizationState = &rasterizer;
         pipelineInfo.pMultisampleState = &multisampling;
-        pipelineInfo.pDepthStencilState = nullptr; // Optional
+        pipelineInfo.pDepthStencilState = &depthStencil;
         pipelineInfo.pColorBlendState = &colorBlending;
         pipelineInfo.pDynamicState = &dynamicState;
         pipelineInfo.layout = pipelineLayout;
@@ -865,16 +941,17 @@ private:
 
         for (size_t i = 0; i < swapChainImageViews.size(); i++) 
         {
-            VkImageView attachments[] = 
+            std::vector<VkImageView> attachments
             {
-                swapChainImageViews[i]
+                swapChainImageViews[i],
+                depthImageView
             };
 
             VkFramebufferCreateInfo framebufferInfo{};
             framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
             framebufferInfo.renderPass = renderPass;
-            framebufferInfo.attachmentCount = 1;
-            framebufferInfo.pAttachments = attachments;
+            framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+            framebufferInfo.pAttachments = attachments.data();
             framebufferInfo.width = swapChainExtent.width;
             framebufferInfo.height = swapChainExtent.height;
             framebufferInfo.layers = 1;
@@ -928,7 +1005,7 @@ private:
         poolSizes[0].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES);
         poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES);
+        poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES) * MAX_TEXTURE_COUNT;
 
         VkDescriptorPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -960,18 +1037,37 @@ private:
 			throw std::runtime_error("Failed to allocate descriptor sets!");
 		}
 
+        std::vector<VkDescriptorImageInfo> imageInfos;
+
+        int i = 0;
+        for (auto& imageView : images)
+        {
+            VkDescriptorImageInfo imageInfo{};
+			imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			imageInfo.imageView = imageView;
+			imageInfo.sampler = textureSampler;
+
+			imageInfos.push_back(imageInfo);
+            i++;
+        }
+
+        for(i; i < 256; i++)
+		{
+			VkDescriptorImageInfo imageInfo{};
+            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            imageInfo.imageView = images[0];
+            imageInfo.sampler = textureSampler;
+            
+            imageInfos.push_back(imageInfo);
+        }
+
+        VkDescriptorBufferInfo vertexBufferInfo{};
+        vertexBufferInfo.buffer = vertexBuffer.buffer;
+        vertexBufferInfo.offset = 0;
+        vertexBufferInfo.range = assets.vertices.size() * sizeof(Vertex);
+
 		for (size_t i = 0; i < MAX_FRAMES; i++) 
         {
-			VkDescriptorBufferInfo vertexBufferInfo{};
-			vertexBufferInfo.buffer = vertexBuffer.buffer;
-			vertexBufferInfo.offset = 0;
-			vertexBufferInfo.range = asset.meshes[0].vertices.size() * sizeof(Vertex);
-
-            VkDescriptorImageInfo imageInfo{};
-            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            imageInfo.imageView = textureImageView;
-            imageInfo.sampler = textureSampler;
-
 			std::vector<VkWriteDescriptorSet> descriptorWrites(2);
 
 			descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -987,10 +1083,8 @@ private:
             descriptorWrites[1].dstBinding = 1;
             descriptorWrites[1].dstArrayElement = 0;
             descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            descriptorWrites[1].descriptorCount = 1;
-            descriptorWrites[1].pImageInfo = &imageInfo;
-
-
+            descriptorWrites[1].descriptorCount = MAX_TEXTURE_COUNT;
+            descriptorWrites[1].pImageInfo = imageInfos.data();
 
             vkUpdateDescriptorSets(vkb_device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
         }
@@ -1036,9 +1130,12 @@ private:
         renderPassInfo.renderArea.offset = { 0, 0 };
         renderPassInfo.renderArea.extent = swapChainExtent;
 
-        VkClearValue clearColor = { {{0.0f, 0.0f, 0.0f, 1.0f}} };
-        renderPassInfo.clearValueCount = 1;
-        renderPassInfo.pClearValues = &clearColor;
+        std::vector<VkClearValue> clearValues(2);
+        clearValues[0].color = { 0.0f, 0.0f, 0.0f, 1.0f };
+        clearValues[1].depthStencil = { 1.0f, 0 };
+
+        renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+        renderPassInfo.pClearValues = clearValues.data();
 
         vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
@@ -1062,7 +1159,9 @@ private:
 
         vkCmdBindIndexBuffer(commandBuffer, indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
-        glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 100.0f);
+        glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 100000.0f);
+
+        projection[1][1] *= -1;
 
         glm::mat4 view = camera.GetViewMatrix();
 
@@ -1073,7 +1172,7 @@ private:
 
         vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUPushConstants), &push);
 
-        vkCmdDrawIndexed(commandBuffer, asset.meshes[0].indices.size(), 1, 0, 0, 0);
+        vkCmdDrawIndexed(commandBuffer, assets.indices.size(), 1, 0, 0, 0);
 
         vkCmdEndRenderPass(commandBuffer);
 
@@ -1221,7 +1320,8 @@ private:
         shaderc::SpvCompilationResult result = compiler.CompileGlslToSpv(
             str_code, shader_kind, "shader.glsl", options);
 
-        if (result.GetCompilationStatus() != shaderc_compilation_status_success) {
+        if (result.GetCompilationStatus() != shaderc_compilation_status_success) 
+        {
             throw std::runtime_error("Shader compilation failed!: " + std::string(result.GetErrorMessage()));
         }
 

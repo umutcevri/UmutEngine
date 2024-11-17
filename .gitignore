@@ -5,6 +5,8 @@
 
 #Custom
 assets/
+textures/
+rawtextures/
 
 # User-specific files
 *.rsuser

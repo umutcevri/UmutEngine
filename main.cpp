@@ -1,7 +1,12 @@
 #include "Engine.h"
 
-int main() {
-   
+#include "TextureCompressor.h"
+
+
+int main() 
+{
+    TextureCompressor::CompressTextures("rawtextures", "textures");
+
     UEngine Engine;
     Engine.Run();
 
