@@ -9,6 +9,7 @@
 #include <chrono>
 #include <filesystem>
 #include <unordered_set>
+#include <array>
 
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_FORCE_RADIANS
@@ -84,4 +85,10 @@ struct AssetData
 struct GPUPushConstants
 {
 	glm::mat4 transform;
+};
+
+struct ShadowData
+{
+    glm::mat4 lightSpaceMatrix;
+    glm::mat4 model;
 };

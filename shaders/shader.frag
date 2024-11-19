@@ -11,6 +11,8 @@ layout(binding = 1) uniform sampler2D texSampler[256];
 void main() {
     if(inDiffuseTextureID != -1)
     {
+        //float depthValue = texture(texSampler[255], inUV).r;
+        //outColor = vec4(vec3(depthValue), 1.0);
         outColor = texture(texSampler[inDiffuseTextureID], inUV);
     }
     else

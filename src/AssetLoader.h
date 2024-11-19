@@ -12,7 +12,7 @@ public:
 	static void LoadAsset(const char* path, AssetData* assets, std::vector<std::string> &texturePaths)
 	{
 		Assimp::Importer importer;
-		const aiScene* scene = importer.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs);
+		const aiScene* scene = importer.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_PreTransformVertices);
 
 		if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
 		{
@@ -62,7 +62,9 @@ public:
 
 			std::string texturePath = _texturePath.C_Str();
 
-			texturePath = texturePath.substr(0, texturePath.find_last_of('.'));
+			if (texturePath.find("textures/") != 0) {
+				texturePath = "textures/" + texturePath;
+			}
 
 			auto it = std::find(texturePaths.begin(), texturePaths.end(), texturePath);
 
