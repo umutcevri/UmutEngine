@@ -68,6 +68,15 @@ struct Vertex {
     int diffuseTextureID;
 };
 
+struct SceneData
+{
+    glm::mat4 projection;
+    glm::mat4 view;
+    glm::mat4 model;
+    glm::mat4 lightSpaceMatrix;
+    glm::vec4 lightPos;
+};
+
 struct MeshData
 {
     std::vector<Vertex> vertices;
@@ -85,6 +94,7 @@ struct AssetData
 struct GPUPushConstants
 {
 	glm::mat4 transform;
+    glm::mat4 lightSpaceMatrix;
 };
 
 struct ShadowData

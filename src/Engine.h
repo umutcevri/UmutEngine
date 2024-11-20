@@ -160,7 +160,7 @@ private:
 
     std::vector<std::string> texturePaths;
 
-    uint32_t shadowMapResolution = 2048;
+    uint32_t shadowMapResolution = 4096;
 
     VkSampler shadowSampler;
 
@@ -177,6 +177,8 @@ private:
     VkImageView shadowImageView;
 
     AllocatedBuffer shadowUniformBuffer;
+
+    AllocatedBuffer sceneDataUniformBuffer;
 
     VkDescriptorPool shadowDescriptorPool;
 
@@ -220,7 +222,7 @@ private:
 
         glfwSetWindowPos(window, 100, 100);
 
-        camera = Camera(glm::vec3(0.0f, 1.0f, 0.0f));
+        camera = Camera(glm::vec3(0.0f, 0.0f, 0.0f));
 
         glfwSetCursorPosCallback(window, MouseCallback);
 
@@ -334,8 +336,10 @@ private:
 
     void LoadAssets()
     {
-		AssetLoader::LoadAsset("assets/ABeautifulGame.gltf", &assets, texturePaths);
-        //AssetLoader::LoadAsset("assets/NewSponza_Main_glTF_003.gltf", &assets, texturePaths);
+        texturePaths.push_back("assets/image.jpg");
+		//AssetLoader::LoadAsset("assets/tata.gltf", &assets, texturePaths);
+        AssetLoader::LoadAsset("assets/NewSponza_Main_glTF_003.gltf", &assets, texturePaths);
+        //AssetLoader::LoadAsset("assets/ABeautifulGame.gltf", &assets, texturePaths);
         
 
         const size_t vertexBufferSize = assets.vertices.size() * sizeof(Vertex);
@@ -360,6 +364,14 @@ private:
         deletionQueue.push_function([&]() {
 			vmaDestroyBuffer(allocator, shadowUniformBuffer.buffer, shadowUniformBuffer.allocation);
 			});
+
+        const size_t sceneDataUniformBufferSize = sizeof(SceneData);
+
+        sceneDataUniformBuffer = CreateBuffer(sceneDataUniformBufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+        deletionQueue.push_function([&]() {
+            vmaDestroyBuffer(allocator, sceneDataUniformBuffer.buffer, sceneDataUniformBuffer.allocation);
+            });
 
 
 
@@ -886,7 +898,13 @@ private:
         samplerLayoutBinding.pImmutableSamplers = nullptr;
         samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-        std::vector<VkDescriptorSetLayoutBinding> bindings = { vertexBufferLayoutBinding, samplerLayoutBinding };
+        VkDescriptorSetLayoutBinding sceneDataLayoutBinding{};
+        sceneDataLayoutBinding.binding = 2;
+        sceneDataLayoutBinding.descriptorCount = 1;
+        sceneDataLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        sceneDataLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+        std::vector<VkDescriptorSetLayoutBinding> bindings = { vertexBufferLayoutBinding, samplerLayoutBinding, sceneDataLayoutBinding };
 
         VkDescriptorSetLayoutCreateInfo layoutInfo{};
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -1057,11 +1075,13 @@ private:
         colorBlending.blendConstants[3] = 0.0f; // Optional
 
         //push constants
+        /*
         VkPushConstantRange pushConstantRange{};
         pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
         pushConstantRange.offset = 0;
         pushConstantRange.size = sizeof(GPUPushConstants);
         pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+        */
 
         //depth stencil
         VkPipelineDepthStencilStateCreateInfo depthStencil{};
@@ -1082,8 +1102,8 @@ private:
         pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         pipelineLayoutInfo.setLayoutCount = 1;
         pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
-        pipelineLayoutInfo.pushConstantRangeCount = 1; // Optional
-        pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange; // Optional
+        //pipelineLayoutInfo.pushConstantRangeCount = 1; // Optional
+        //pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange; // Optional
 
         if (vkCreatePipelineLayout(vkb_device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create pipeline layout!");
@@ -1432,11 +1452,13 @@ private:
 
     void CreateDescriptorPool()
     {
-        std::vector<VkDescriptorPoolSize> poolSizes(2);
+        std::vector<VkDescriptorPoolSize> poolSizes(3);
         poolSizes[0].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES);
         poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES) * MAX_TEXTURE_COUNT;
+        poolSizes[2].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        poolSizes[2].descriptorCount = static_cast<uint32_t>(MAX_FRAMES);
 
         VkDescriptorPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -1529,9 +1551,14 @@ private:
         vertexBufferInfo.offset = 0;
         vertexBufferInfo.range = assets.vertices.size() * sizeof(Vertex);
 
+        VkDescriptorBufferInfo sceneBufferInfo{};
+        sceneBufferInfo.buffer = sceneDataUniformBuffer.buffer;
+        sceneBufferInfo.offset = 0;
+        sceneBufferInfo.range = sizeof(SceneData);
+
 		for (size_t i = 0; i < MAX_FRAMES; i++) 
         {
-			std::vector<VkWriteDescriptorSet> descriptorWrites(2);
+			std::vector<VkWriteDescriptorSet> descriptorWrites(3);
 
 			descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 			descriptorWrites[0].dstSet = descriptorSets[i];
@@ -1548,6 +1575,14 @@ private:
             descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             descriptorWrites[1].descriptorCount = MAX_TEXTURE_COUNT;
             descriptorWrites[1].pImageInfo = imageInfos.data();
+
+            descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrites[2].dstSet = descriptorSets[i];
+            descriptorWrites[2].dstBinding = 2;
+            descriptorWrites[2].dstArrayElement = 0;
+            descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            descriptorWrites[2].descriptorCount = 1;
+            descriptorWrites[2].pBufferInfo = &sceneBufferInfo;
 
             vkUpdateDescriptorSets(vkb_device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
         }
@@ -1642,6 +1677,14 @@ private:
 
     void RecordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) 
     {
+        glm::mat4 lightProjection = glm::ortho(-50.0f, 50.0f, -50.0f, 50.0f, 0.1f, 100.0f);
+
+        glm::vec3 lightPos = glm::vec3(20.0f, 50.0f, -10.0f);
+
+        glm::mat4 lightView = glm::lookAt(lightPos, glm::vec3(0.0f), glm::vec3(0.0, 1.0, 0.0));
+
+        glm::mat4 lightSpaceMatrix = lightProjection * lightView;
+
         VkCommandBufferBeginInfo beginInfo{};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         beginInfo.flags = 0; // Optional
@@ -1686,13 +1729,7 @@ private:
             vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
 
-            glm::mat4 lightProjection = glm::ortho(-20.0f, 20.0f, -20.0f, 20.0f, 0.1f, 10000.0f);
-
-            glm::vec3 lightPos = glm::vec3(0.0f, 100.0f, 0.0f);
-
-            glm::mat4 lightView = glm::lookAt(lightPos, glm::vec3(0.0f), glm::vec3(0.0, 0.0, 1.0));
-
-            glm::mat4 lightSpaceMatrix = lightProjection * lightView;
+           
 
             ShadowData shadowData{};
             shadowData.lightSpaceMatrix = lightSpaceMatrix;
@@ -1747,7 +1784,7 @@ private:
 
             vkCmdBindIndexBuffer(commandBuffer, indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
-            glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 100000.0f);
+            glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 100.0f);
 
             projection[1][1] *= -1;
 
@@ -1755,10 +1792,15 @@ private:
 
             glm::mat4 model = glm::mat4(1.0f);
 
-            GPUPushConstants push{};
-            push.transform = projection * view * model;
+            SceneData sceneData{};
+            sceneData.projection = projection;
+            sceneData.view = view;
+            sceneData.model = model;
+            sceneData.lightSpaceMatrix = lightSpaceMatrix;
+            sceneData.lightPos = glm::vec4(lightPos, 0.f);
 
-            vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUPushConstants), &push);
+            void* data = sceneDataUniformBuffer.allocation->GetMappedData();
+            memcpy(data, &sceneData, sizeof(SceneData));
 
             vkCmdDrawIndexed(commandBuffer, assets.indices.size(), 1, 0, 0, 0);
 

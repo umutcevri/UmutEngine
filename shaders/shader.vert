@@ -4,6 +4,10 @@
 layout(location = 0) out vec3 fragColor;
 layout (location = 1) out vec2 outUV;
 layout (location = 2) flat out int outDiffuseTextureID;
+layout (location = 3) out vec3 outNormal;
+layout (location = 4) out vec3 fragPos;
+layout (location = 5) out vec3 lightPos;
+layout (location = 6) out vec4 fragPosLightSpace;
 
 struct Vertex {
     vec3 position;
@@ -14,21 +18,32 @@ struct Vertex {
     int diffuseTextureID;
 };
 
+struct SceneData
+{
+    mat4 projection;
+    mat4 view;
+    mat4 model;
+    mat4 lightSpaceMatrix;
+    vec4 lightPos;
+};
+
 layout(binding = 0, std430) readonly buffer VertexBuffer{ 
 	Vertex vertices[];
 };
 
-layout( push_constant ) uniform constants
-{	
-	mat4 transform;
-} PushConstants;
+layout(binding = 2) uniform SceneDataUniformBuffer{
+	 SceneData sceneData;
+};
 
 void main() {
     Vertex v = vertices[gl_VertexIndex];
-    gl_Position = PushConstants.transform * vec4(v.position, 1.0);
+    gl_Position = sceneData.projection * sceneData.view * sceneData.model *  vec4(v.position, 1.0);
     outUV.x = v.uv_x;
 	outUV.y = v.uv_y;
     fragColor = v.color;
     outDiffuseTextureID = v.diffuseTextureID;
-  
+    outNormal = mat3(transpose(inverse(sceneData.model))) * v.normal;
+    fragPos = vec3(sceneData.model * vec4(v.position, 1.0));
+    lightPos = vec3(sceneData.lightPos);
+    fragPosLightSpace = sceneData.lightSpaceMatrix * vec4(fragPos, 1.0);
 }
