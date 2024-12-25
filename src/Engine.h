@@ -17,6 +17,9 @@
 
 #include "AssetLoader.h"
 
+std::vector<std::string> AssetLoader::transparentTextureSet;
+bool AssetLoader::isTransparentTexturesLoaded = false;
+
 #include "Camera.h"
 
 #include <ktx.h>
@@ -113,6 +116,8 @@ private:
 
     std::vector<VkDescriptorSet> descriptorSets = std::vector<VkDescriptorSet>(MAX_FRAMES);
 
+	std::vector<VkDescriptorSet> transparentDescriptorSets = std::vector<VkDescriptorSet>(MAX_FRAMES);
+
     std::vector<VkDescriptorSet> shadowDescriptorSets = std::vector<VkDescriptorSet>(MAX_FRAMES);
 
     VkPipelineLayout pipelineLayout;
@@ -141,6 +146,9 @@ private:
 
     AllocatedBuffer vertexBuffer;
     AllocatedBuffer indexBuffer;
+
+	AllocatedBuffer vertexBufferTransparent;
+	AllocatedBuffer indexBufferTransparent;
 
     AssetData assets{};
 
@@ -338,24 +346,49 @@ private:
     {
         texturePaths.push_back("assets/image.jpg");
 		//AssetLoader::LoadAsset("assets/tata.gltf", &assets, texturePaths);
-        AssetLoader::LoadAsset("assets/NewSponza_Main_glTF_003.gltf", &assets, texturePaths);
-        //AssetLoader::LoadAsset("assets/ABeautifulGame.gltf", &assets, texturePaths);
+        //AssetLoader::LoadAsset("assets/NewSponza_Main_glTF_003.gltf", &assets, texturePaths);
+        //AssetLoader::LoadAsset("assets/ABeautifulGame.gltf", &assets, texturePaths, aiProcess_PreTransformVertices);
+		//AssetLoader::LoadAsset("assets/Sphere.obj", &assets, texturePaths);
+		AssetLoader::LoadAsset("assets/scene.gltf", &assets, texturePaths);
+
         
 
+		//create vertex and index buffer
         const size_t vertexBufferSize = assets.vertices.size() * sizeof(Vertex);
         const size_t indexBufferSize = assets.indices.size() * sizeof(uint32_t);
 
-        vertexBuffer = CreateBuffer(vertexBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-            VMA_MEMORY_USAGE_GPU_ONLY);
+        if (vertexBufferSize + indexBufferSize > 0)
+        {
+            vertexBuffer = CreateBuffer(vertexBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                VMA_MEMORY_USAGE_GPU_ONLY);
 
-        indexBuffer = CreateBuffer(indexBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-            VMA_MEMORY_USAGE_GPU_ONLY);
+            indexBuffer = CreateBuffer(indexBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                VMA_MEMORY_USAGE_GPU_ONLY);
 
-        deletionQueue.push_function([&]() {
-            vmaDestroyBuffer(allocator, vertexBuffer.buffer, vertexBuffer.allocation);
-            vmaDestroyBuffer(allocator, indexBuffer.buffer, indexBuffer.allocation);
-            });
+            deletionQueue.push_function([&]() {
+                vmaDestroyBuffer(allocator, vertexBuffer.buffer, vertexBuffer.allocation);
+                vmaDestroyBuffer(allocator, indexBuffer.buffer, indexBuffer.allocation);
+                });
+        }
 
+		//create transparent vertex and index buffer
+
+		const size_t vertexBufferSizeTransparent = assets.verticesTransparent.size() * sizeof(Vertex);
+		const size_t indexBufferSizeTransparent = assets.indicesTransparent.size() * sizeof(uint32_t);
+
+        if (vertexBufferSizeTransparent + indexBufferSizeTransparent > 0)
+        {
+            vertexBufferTransparent = CreateBuffer(vertexBufferSizeTransparent, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                VMA_MEMORY_USAGE_GPU_ONLY);
+
+            indexBufferTransparent = CreateBuffer(indexBufferSizeTransparent, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                VMA_MEMORY_USAGE_GPU_ONLY);
+
+            deletionQueue.push_function([&]() {
+                vmaDestroyBuffer(allocator, vertexBufferTransparent.buffer, vertexBufferTransparent.allocation);
+                vmaDestroyBuffer(allocator, indexBufferTransparent.buffer, indexBufferTransparent.allocation);
+                });
+        }
 
         const size_t shadowUniformBufferSize = sizeof(ShadowData);
 
@@ -374,40 +407,75 @@ private:
             });
 
 
+		//copy vertex and index data to GPU
+        if (vertexBufferSize + indexBufferSize > 0)
+        {
+            AllocatedBuffer staging = CreateBuffer(vertexBufferSize + indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+
+            void* data = staging.allocation->GetMappedData();
+
+            // copy vertex buffer
+            memcpy(data, assets.vertices.data(), vertexBufferSize);
+            // copy index buffer
+            memcpy((char*)data + vertexBufferSize, assets.indices.data(), indexBufferSize);
 
 
-        AllocatedBuffer staging = CreateBuffer(vertexBufferSize + indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+            // copy staging buffer to vertex and index buffer
+            OneTimeSubmit([&](VkCommandBuffer cmd) {
+                VkBufferCopy vertexCopy{ 0 };
+                vertexCopy.dstOffset = 0;
+                vertexCopy.srcOffset = 0;
+                vertexCopy.size = vertexBufferSize;
 
-        void* data = staging.allocation->GetMappedData();
+                vkCmdCopyBuffer(cmd, staging.buffer, vertexBuffer.buffer, 1, &vertexCopy);
 
-        // copy vertex buffer
-        memcpy(data, assets.vertices.data(), vertexBufferSize);
-        // copy index buffer
-        memcpy((char*)data + vertexBufferSize, assets.indices.data(), indexBufferSize);
+                VkBufferCopy indexCopy{ 0 };
+                indexCopy.dstOffset = 0;
+                indexCopy.srcOffset = vertexBufferSize;
+                indexCopy.size = indexBufferSize;
 
+                vkCmdCopyBuffer(cmd, staging.buffer, indexBuffer.buffer, 1, &indexCopy);
+                });
 
-        // copy staging buffer to vertex and index buffer
-        OneTimeSubmit([&](VkCommandBuffer cmd) {
-			VkBufferCopy vertexCopy{ 0 };
-			vertexCopy.dstOffset = 0;
-			vertexCopy.srcOffset = 0;
-			vertexCopy.size = vertexBufferSize;
+            vmaDestroyBuffer(allocator, staging.buffer, staging.allocation);
+        }
 
-			vkCmdCopyBuffer(cmd, staging.buffer, vertexBuffer.buffer, 1, &vertexCopy);
+		//copy transparent vertex and index data to GPU
+		if (vertexBufferSizeTransparent + indexBufferSizeTransparent > 0)
+		{
 
-			VkBufferCopy indexCopy{ 0 };
-			indexCopy.dstOffset = 0;
-			indexCopy.srcOffset = vertexBufferSize;
-			indexCopy.size = indexBufferSize;
+			AllocatedBuffer staging = CreateBuffer(vertexBufferSizeTransparent + indexBufferSizeTransparent, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
 
-			vkCmdCopyBuffer(cmd, staging.buffer, indexBuffer.buffer, 1, &indexCopy);
-			});
+			void* data = staging.allocation->GetMappedData();
 
+			// copy vertex buffer
+			memcpy(data, assets.verticesTransparent.data(), vertexBufferSizeTransparent);
 
-        
+			// copy index buffer
+			memcpy((char*)data + vertexBufferSizeTransparent, assets.indicesTransparent.data(), indexBufferSizeTransparent);
 
-        vmaDestroyBuffer(allocator, staging.buffer, staging.allocation);
-        
+			// copy staging buffer to vertex and index buffer
+			OneTimeSubmit([&](VkCommandBuffer cmd) {
+				VkBufferCopy vertexCopy{ 0 };
+				vertexCopy.dstOffset = 0;
+				vertexCopy.srcOffset = 0;
+				vertexCopy.size = vertexBufferSizeTransparent;
+                    
+				vkCmdCopyBuffer(cmd, staging.buffer, vertexBufferTransparent.buffer, 1, &vertexCopy);
+
+				VkBufferCopy indexCopy{ 0 };
+				indexCopy.dstOffset = 0;
+				indexCopy.srcOffset = vertexBufferSizeTransparent;
+				indexCopy.size = indexBufferSizeTransparent;
+
+				vkCmdCopyBuffer(cmd, staging.buffer, indexBufferTransparent.buffer, 1, &indexCopy);
+
+				});
+
+			vmaDestroyBuffer(allocator, staging.buffer, staging.allocation);
+
+		}
+
         for(std::string texturePath : texturePaths)
 		{
 			CreateTextureImage(texturePath);
@@ -471,7 +539,7 @@ private:
             images.push_back(textureImageView);
 		}
 
-        else if (extension == "jpg")
+        else if (extension == "jpg" || extension == "jpeg")
         {
 
             int texWidth, texHeight, texChannels;
@@ -505,6 +573,10 @@ private:
             VkImageView textureImageView = CreateImageView(textureImage, format, VK_IMAGE_ASPECT_COLOR_BIT);
 
             images.push_back(textureImageView);
+        }
+        else
+        {
+			throw std::runtime_error("Unsupported texture format!");
         }
         
     }
@@ -1035,7 +1107,7 @@ private:
         rasterizer.rasterizerDiscardEnable = VK_FALSE;
         rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
         rasterizer.lineWidth = 1.0f;
-        rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+        rasterizer.cullMode = VK_CULL_MODE_NONE;
         rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
         rasterizer.depthBiasEnable = VK_FALSE;
         rasterizer.depthBiasConstantFactor = 0.0f; // Optional
@@ -1454,7 +1526,7 @@ private:
     {
         std::vector<VkDescriptorPoolSize> poolSizes(3);
         poolSizes[0].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES);
+        poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES * 2);
         poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES) * MAX_TEXTURE_COUNT;
         poolSizes[2].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -1464,7 +1536,7 @@ private:
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
         poolInfo.pPoolSizes = poolSizes.data();
-        poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES);
+        poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES * 2);
 
         if (vkCreateDescriptorPool(vkb_device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create descriptor pool!");
@@ -1502,6 +1574,7 @@ private:
 
     void CreateDescriptorSets()
     {
+		
         std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES, descriptorSetLayout);
 
 		VkDescriptorSetAllocateInfo allocInfo{};
@@ -1510,10 +1583,16 @@ private:
 		allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES);
 		allocInfo.pSetLayouts = layouts.data();
 
-		
+        //allocate descriptor sets
 		if (vkAllocateDescriptorSets(vkb_device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
 			throw std::runtime_error("Failed to allocate descriptor sets!");
 		}
+
+		//allocate transparent descriptor sets
+		if (vkAllocateDescriptorSets(vkb_device, &allocInfo, transparentDescriptorSets.data()) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to allocate descriptor sets!");
+		}
+
 
         std::vector<VkDescriptorImageInfo> imageInfos;
 
@@ -1578,6 +1657,44 @@ private:
 
             descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             descriptorWrites[2].dstSet = descriptorSets[i];
+            descriptorWrites[2].dstBinding = 2;
+            descriptorWrites[2].dstArrayElement = 0;
+            descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            descriptorWrites[2].descriptorCount = 1;
+            descriptorWrites[2].pBufferInfo = &sceneBufferInfo;
+
+            vkUpdateDescriptorSets(vkb_device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+        }
+
+		//transparent descriptor sets
+
+        VkDescriptorBufferInfo vertexBufferTransparentInfo{};
+        vertexBufferTransparentInfo.buffer = vertexBufferTransparent.buffer;
+        vertexBufferTransparentInfo.offset = 0;
+        vertexBufferTransparentInfo.range = assets.verticesTransparent.size() * sizeof(Vertex);
+
+        for (size_t i = 0; i < MAX_FRAMES; i++)
+        {
+            std::vector<VkWriteDescriptorSet> descriptorWrites(3);
+
+            descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrites[0].dstSet = transparentDescriptorSets[i];
+            descriptorWrites[0].dstBinding = 0;
+            descriptorWrites[0].dstArrayElement = 0;
+            descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            descriptorWrites[0].descriptorCount = 1;
+            descriptorWrites[0].pBufferInfo = &vertexBufferTransparentInfo;
+
+            descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrites[1].dstSet = transparentDescriptorSets[i];
+            descriptorWrites[1].dstBinding = 1;
+            descriptorWrites[1].dstArrayElement = 0;
+            descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            descriptorWrites[1].descriptorCount = MAX_TEXTURE_COUNT;
+            descriptorWrites[1].pImageInfo = imageInfos.data();
+
+            descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrites[2].dstSet = transparentDescriptorSets[i];
             descriptorWrites[2].dstBinding = 2;
             descriptorWrites[2].dstArrayElement = 0;
             descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -1677,9 +1794,13 @@ private:
 
     void RecordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) 
     {
-        glm::mat4 lightProjection = glm::ortho(-50.0f, 50.0f, -50.0f, 50.0f, 0.1f, 100.0f);
+        //glm::mat4 lightProjection = glm::ortho(-50.0f, 50.0f, -50.0f, 50.0f, 0.1f, 100.0f);
 
-        glm::vec3 lightPos = glm::vec3(20.0f, 50.0f, -10.0f);
+        glm::mat4 lightProjection = glm::ortho(-10.0f, 10.0f, -10.0f, 10.0f, 0.1f, 20.0f);
+
+        //glm::vec3 lightPos = glm::vec3(20.0f, 50.0f, -10.0f);
+
+        glm::vec3 lightPos = glm::vec3(2.f, 2.f, -0.f);
 
         glm::mat4 lightView = glm::lookAt(lightPos, glm::vec3(0.0f), glm::vec3(0.0, 1.0, 0.0));
 
@@ -1756,7 +1877,7 @@ private:
             renderPassInfo.renderArea.extent = swapChainExtent;
 
             std::vector<VkClearValue> clearValues(2);
-            clearValues[0].color = { 0.0f, 0.0f, 0.0f, 1.0f };
+            clearValues[0].color = { 1.0f, 1.0f, 1.0f, 1.0f };
             clearValues[1].depthStencil = { 1.0f, 0 };
 
             renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
@@ -1780,9 +1901,7 @@ private:
             scissor.extent = swapChainExtent;
             vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-            vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
-
-            vkCmdBindIndexBuffer(commandBuffer, indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+            
 
             glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 100.0f);
 
@@ -1802,7 +1921,22 @@ private:
             void* data = sceneDataUniformBuffer.allocation->GetMappedData();
             memcpy(data, &sceneData, sizeof(SceneData));
 
-            vkCmdDrawIndexed(commandBuffer, assets.indices.size(), 1, 0, 0, 0);
+            vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
+
+            if (!assets.indices.empty())
+            {
+                vkCmdBindIndexBuffer(commandBuffer, indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+                vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(assets.indices.size()), 1, 0, 0, 0);
+            }
+
+			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &transparentDescriptorSets[currentFrame], 0, nullptr);
+
+            if (!assets.indicesTransparent.empty())
+            {
+                vkCmdBindIndexBuffer(commandBuffer, indexBufferTransparent.buffer, 0, VK_INDEX_TYPE_UINT32);
+
+                vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(assets.indicesTransparent.size()), 1, 0, 0, 0);
+            }
 
             vkCmdEndRenderPass(commandBuffer);
 

@@ -16,6 +16,10 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
+
 static std::vector<char> ReadFile(const std::string& filename)
 {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
@@ -89,6 +93,10 @@ struct AssetData
 {
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
+
+    // Transparent
+    std::vector<Vertex>      verticesTransparent;
+    std::vector<uint32_t>    indicesTransparent;
 };
 
 struct GPUPushConstants

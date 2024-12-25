@@ -35,11 +35,18 @@ void main() {
     if(inDiffuseTextureID != -1)
     {
         vec3 result = ((1 - shadow) * diffuse + ambient) * texture(texSampler[inDiffuseTextureID], inUV).rgb;
+        //vec3 result = (diffuse + ambient) * texture(texSampler[inDiffuseTextureID], inUV).rgb;
+        if(texture(texSampler[inDiffuseTextureID], inUV).a < 0.1)
+        {
+            discard;
+        }
+
         outColor = vec4(result, texture(texSampler[inDiffuseTextureID], inUV).a);
     }
     else
     {
         vec3 result = ((1 - shadow) * diffuse + ambient) * fragColor;
+        //vec3 result = (diffuse + ambient) * fragColor;
         outColor = vec4(result, 1.0);
 	}
     
