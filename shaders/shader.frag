@@ -36,7 +36,7 @@ void main() {
     {
         vec3 result = ((1 - shadow) * diffuse + ambient) * texture(texSampler[inDiffuseTextureID], inUV).rgb;
         //vec3 result = (diffuse + ambient) * texture(texSampler[inDiffuseTextureID], inUV).rgb;
-        if(texture(texSampler[inDiffuseTextureID], inUV).a < 0.1)
+        if(texture(texSampler[inDiffuseTextureID], inUV).a < 0.2)
         {
             discard;
         }

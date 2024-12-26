@@ -18,6 +18,11 @@ struct Vertex {
     int diffuseTextureID;
 };
 
+struct ObjectInstance
+{
+	mat4 model;
+};
+
 struct SceneData
 {
     mat4 projection;
@@ -31,13 +36,17 @@ layout(binding = 0, std430) readonly buffer VertexBuffer{
 	Vertex vertices[];
 };
 
+layout(binding = 3, std430) readonly buffer ObjectInstanceBuffer{
+     ObjectInstance objectInstances[];
+};
+
 layout(binding = 2) uniform SceneDataUniformBuffer{
 	 SceneData sceneData;
 };
 
 void main() {
     Vertex v = vertices[gl_VertexIndex];
-    gl_Position = sceneData.projection * sceneData.view * sceneData.model *  vec4(v.position, 1.0);
+    gl_Position = sceneData.projection * sceneData.view * objectInstances[gl_InstanceIndex].model *  vec4(v.position, 1.0);
     outUV.x = v.uv_x;
 	outUV.y = v.uv_y;
     fragColor = v.color;

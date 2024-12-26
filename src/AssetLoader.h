@@ -2,28 +2,35 @@
 
 #include "CommonTypes.h"
 
-class AssetLoader
+class AssetManager
 {
 public:
-	static std::vector<std::string> transparentTextureSet;
-	static bool isTransparentTexturesLoaded;
+	std::vector<std::string> transparentTextureSet;
 
-	static void LoadAsset(const char* path, AssetData* assets, std::vector<std::string> &texturePaths, unsigned int assimpFlags = 0)
+	std::vector<std::string> texturePaths;
+
+	std::vector<Vertex> vertices;
+	std::vector<uint32_t> indices;
+
+	std::vector<Object> objects;
+
+	//map to hold object names and their corresponding index in the objects vector
+	std::unordered_map<std::string, size_t> objectMap;
+
+	AssetManager()
 	{
-		if (!isTransparentTexturesLoaded)
+		std::ifstream infile("assets/TransparentTextures.txt");
+		std::string line;
+		while (std::getline(infile, line))
 		{
-			std::ifstream infile("assets/TransparentTextures.txt");
-			std::string line;
-			while (std::getline(infile, line))
-			{
-				line.erase(std::remove_if(line.begin(), line.end(), ::isspace), line.end());
-				if (!line.empty())
-					transparentTextureSet.push_back(line);
-			}
-
-			isTransparentTexturesLoaded = true;
+			line.erase(std::remove_if(line.begin(), line.end(), ::isspace), line.end());
+			if (!line.empty())
+				transparentTextureSet.push_back(line);
 		}
+	}
 
+	void LoadAsset(const char* path, std::string objectName, unsigned int assimpFlags = 0)
+	{
 		Assimp::Importer importer;
 		const aiScene* scene = importer.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | assimpFlags);
 
@@ -33,12 +40,64 @@ public:
 			return;
 		}
 
-		ProcessNode(scene->mRootNode, scene, assets, texturePaths);
+		Object object{};
 
-		return;
+		ProcessNode(scene->mRootNode, scene, object);
+
+		if (object.meshes.size() > 0)
+		{
+			objectMap[objectName] = objects.size();
+			objects.push_back(object);
+		}
 	}
 
-	static void ProcessNode(aiNode* node, const aiScene* scene, AssetData* assets, std::vector<std::string>& texturePaths, const aiMatrix4x4& parentTransform = aiMatrix4x4())
+	void CreateObjectInstance(std::string objectName, glm::vec3 position = glm::vec3(0,0,0), glm::vec3 rotation = glm::vec3(0,0,0), glm::vec3 scale = glm::vec3(1,1,1))
+	{
+		// Check if the object exists in the objectMap
+		auto it = objectMap.find(objectName);
+		if (it != objectMap.end())
+		{
+			glm::mat4 transform = glm::mat4(1.0f);
+			transform = glm::translate(transform, position);
+			transform = glm::rotate(transform, glm::radians(rotation.x), glm::vec3(1, 0, 0));
+			transform = glm::rotate(transform, glm::radians(rotation.y), glm::vec3(0, 1, 0));
+			transform = glm::rotate(transform, glm::radians(rotation.z), glm::vec3(0, 0, 1));
+			transform = glm::scale(transform, scale);
+
+			objects[it->second].instances.push_back(transform);
+		}
+		else
+		{
+			std::cout << "Object not found" << std::endl;
+		}
+	}
+
+	void DeleteObjectInstance(std::string objectName, size_t instanceIndex)
+	{
+		auto it = objectMap.find(objectName);
+		if (it != objectMap.end())
+		{
+			if (objects[it->second].instances.size() == 0)
+			{
+				std::cout << "No instances to delete" << std::endl;
+				return;
+			}
+
+			if (instanceIndex >= objects[it->second].instances.size())
+			{
+				std::cout << "Instance index out of range" << std::endl;
+				return;
+			}
+
+			objects[it->second].instances.erase(objects[it->second].instances.begin() + instanceIndex);
+		}
+		else
+		{
+			std::cout << "Object not found" << std::endl;
+		}
+	}
+
+	void ProcessNode(aiNode* node, const aiScene* scene, Object& object, const aiMatrix4x4& parentTransform = aiMatrix4x4())
 	{
 		aiMatrix4x4 nodeTransform = parentTransform * node->mTransformation;
 
@@ -46,23 +105,30 @@ public:
 		{
 			aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
 
-			ProcessMesh(mesh, scene, assets, texturePaths, nodeTransform);
+			Mesh meshData = ProcessMesh(mesh, scene, nodeTransform);
+
+			if (meshData.indexCount > 0)
+			{
+				object.meshes.push_back(meshData);
+			}
 		}
 
 		for (unsigned int i = 0; i < node->mNumChildren; i++)
 		{
-			ProcessNode(node->mChildren[i], scene, assets, texturePaths, nodeTransform);
+			ProcessNode(node->mChildren[i], scene, object, nodeTransform);
 		}
 	}
 
-	static void ProcessMesh(aiMesh* mesh, const aiScene* scene, AssetData* assets, std::vector<std::string>& texturePaths, const aiMatrix4x4& nodeTransform)
+	Mesh ProcessMesh(aiMesh* mesh, const aiScene* scene, const aiMatrix4x4& nodeTransform)
 	{
+		Mesh meshData;
+
 		//print name of mesh
 		std::cout << "Mesh name: " << mesh->mName.C_Str() << std::endl;
 		
 		//if mesh name has "Plane" in it, skip it
 		if (std::string(mesh->mName.C_Str()).find("Plane") != std::string::npos) {
-			return;
+			return meshData;
 		}
 		
 		bool hasTransparentTexture = false;
@@ -70,9 +136,6 @@ public:
 		int diffuseTextureID = -1;
 
 		aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
-
-		aiString name;
-		material->Get(AI_MATKEY_NAME, name);
 
 		aiColor3D color(0.f, 0.f, 0.f);
 		material->Get(AI_MATKEY_COLOR_DIFFUSE, color);
@@ -112,39 +175,27 @@ public:
 			}
 		}
 
-		//print if has transparent texture
-		std::cout << "Has transparent texture: " << hasTransparentTexture << std::endl;
+		meshData.isTransparent = hasTransparentTexture;
 
-		//hasTransparentTexture = true;
-
-		auto& outVertices = hasTransparentTexture ? assets->verticesTransparent : assets->vertices;
-		auto& outIndices = hasTransparentTexture ? assets->indicesTransparent : assets->indices;
-
-
-		if (hasTransparentTexture)
-		{
-			std::cout << "num of faces: " << mesh->mNumFaces << std::endl;
-		}
+		uint32_t startIndex = static_cast<uint32_t>(indices.size());
 
 		for (unsigned int i = 0; i < mesh->mNumFaces; i++)
 		{
 			aiFace face = mesh->mFaces[i];
 			for (unsigned int j = 0; j < face.mNumIndices; j++)
 			{
-				outIndices.push_back(face.mIndices[j] + static_cast<uint32_t>(outVertices.size()));
+				indices.push_back(face.mIndices[j] + static_cast<uint32_t>(vertices.size()));
 			}
 		}
+
+		uint32_t indexCount = static_cast<uint32_t>(indices.size()) - startIndex;
+
+		meshData.startIndex = startIndex;
+		meshData.indexCount = indexCount;
 
 		for (unsigned int i = 0; i < mesh->mNumVertices; i++)
 		{
 			aiVector3D& vertexPos = mesh->mVertices[i];
-
-			//scale the node transform
-			aiMatrix4x4 scaleMatrix;
-			aiMatrix4x4::Scaling(aiVector3D(10, 10, 10), scaleMatrix);
-			//nodeTransform = scaleMatrix * nodeTransform;
-
-			//vertexPos = scaleMatrix * vertexPos;
 
 			Vertex vertex;
 			vertex.position = glm::vec3(vertexPos.x, vertexPos.y, vertexPos.z);
@@ -165,8 +216,10 @@ public:
 			
 			vertex.color = glm::vec3(color.r, color.g, color.b);
 
-			outVertices.push_back(vertex);
+			vertices.push_back(vertex);
 		}
+
+		return meshData;
 
 	}
 };

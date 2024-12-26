@@ -63,6 +63,26 @@ struct DeletionQueue
     }
 };
 
+struct DrawQueue
+{
+    std::deque<std::function<void()>> drawCalls;
+
+    void push_function(std::function<void()>&& function)
+    {
+        drawCalls.push_back(function);
+    }
+
+    void flush()
+    {
+        for (auto it = drawCalls.rbegin(); it != drawCalls.rend(); it++)
+        {
+            (*it)();
+        }
+        drawCalls.clear();
+    };
+
+};
+
 struct Vertex {
     glm::vec3 position;
     float uv_x;
@@ -81,22 +101,22 @@ struct SceneData
     glm::vec4 lightPos;
 };
 
-struct MeshData
+struct Mesh
 {
-    std::vector<Vertex> vertices;
-    std::vector<uint32_t> indices;
-
-    glm::mat4 model;
+    uint32_t startIndex = 0;
+	uint32_t indexCount = 0;
+	bool isTransparent = false;
 };
 
-struct AssetData
+struct Object
 {
-    std::vector<Vertex> vertices;
-    std::vector<uint32_t> indices;
+	std::vector<glm::mat4> instances;
+	std::vector<Mesh> meshes;
+};
 
-    // Transparent
-    std::vector<Vertex>      verticesTransparent;
-    std::vector<uint32_t>    indicesTransparent;
+struct ObjectInstance
+{
+	glm::mat4 model;
 };
 
 struct GPUPushConstants
@@ -109,4 +129,33 @@ struct ShadowData
 {
     glm::mat4 lightSpaceMatrix;
     glm::mat4 model;
+};
+
+std::vector<glm::vec3> cubeVertices = {
+    // Front face
+    glm::vec3(-0.5f, -0.5f,  0.5f), // Bottom-left
+    glm::vec3(0.5f, -0.5f,  0.5f), // Bottom-right
+    glm::vec3(0.5f,  0.5f,  0.5f), // Top-right
+    glm::vec3(-0.5f,  0.5f,  0.5f), // Top-left
+
+    // Back face
+    glm::vec3(-0.5f, -0.5f, -0.5f), // Bottom-left
+    glm::vec3(0.5f, -0.5f, -0.5f), // Bottom-right
+    glm::vec3(0.5f,  0.5f, -0.5f), // Top-right
+    glm::vec3(-0.5f,  0.5f, -0.5f)  // Top-left
+};
+
+std::vector<uint32_t> cubeIndices = {
+    // Front face
+   0, 1, 2, 2, 3, 0,
+   // Back face
+   4, 5, 6, 6, 7, 4,
+   // Left face
+   4, 0, 3, 3, 7, 4,
+   // Right face
+   1, 5, 6, 6, 2, 1,
+   // Top face
+   3, 2, 6, 6, 7, 3,
+   // Bottom face
+   4, 5, 1, 1, 0, 4
 };

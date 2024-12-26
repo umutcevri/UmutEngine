@@ -151,6 +151,8 @@
     <ClInclude Include="src\TextureCompressor.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="shaders\debugQuad.frag" />
+    <None Include="shaders\debugQuad.vert" />
     <None Include="shaders\shader.frag" />
     <None Include="shaders\shader.vert" />
     <None Include="shaders\shadow.vert" />
