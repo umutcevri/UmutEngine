@@ -23,14 +23,20 @@
 
 #include <ktx.h>
 
+#include <glslang/Public/ShaderLang.h>
+#include <glslang/SPIRV/GlslangToSpv.h>
+#include <glslang/Public/ResourceLimits.h>
+
 const int MAX_TEXTURE_COUNT = 256;
 
 const int MAX_OBJECTS = 1024;
 
 const int MAX_FRAMES = 2;
 
-const uint32_t WIDTH = 1920;
-const uint32_t HEIGHT = 1080;
+bool renderDebugQuad = false;
+
+const uint32_t WIDTH = 1280;
+const uint32_t HEIGHT = 720;
 
 Camera camera;
 
@@ -76,6 +82,15 @@ void ProcessInput(GLFWwindow* window, float deltaTime)
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
         camera.ProcessKeyboard(RIGHT, deltaTime);
 }
+
+void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) 
+{
+
+    if (key == GLFW_KEY_O && action == GLFW_PRESS) {
+		renderDebugQuad = !renderDebugQuad;
+    }
+}
+
 
 class UEngine {
 private:
@@ -226,9 +241,19 @@ public:
         CreateShadowDescriptorSets();
 		CreateDebugQuadDescriptorSets();
 
+        auto start = std::chrono::high_resolution_clock::now();
+
         CreateGraphicsPipeline();
         CreateDebugQuadPipeline();
         CreateShadowPipeline();
+
+        auto end = std::chrono::high_resolution_clock::now();
+
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+
+        std::cout << "Pipeline creation time: " << duration << " milliseconds" << std::endl;
+
+        glslang::FinalizeProcess();
 
         CreateFrameBuffers();
 
@@ -256,9 +281,13 @@ private:
 
         camera = Camera(glm::vec3(0.0f, 0.0f, 0.0f));
 
+		glfwSetKeyCallback(window, keyCallback);
+
         glfwSetCursorPosCallback(window, MouseCallback);
 
         glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
+        glslang::InitializeProcess();
     }
 
     void InitVulkan() {
@@ -373,18 +402,7 @@ private:
 
 		Mesh cubeMesh;
 
-        for (glm::vec3& pos : cubeVertices)
-        {
-            Vertex v;
-			v.position = pos;
-			v.uv_x = 0.0f;
-			v.uv_y = 0.0f;
-			v.normal = glm::vec3(0.0f, 0.0f, 0.0f);
-			v.color = glm::vec3(0.0f, 1.0f, 1.0f);
-			v.diffuseTextureID = -1;
-			assetManager.vertices.push_back(v);
-        }
-
+		assetManager.vertices = cubeVertices;
         assetManager.indices = cubeIndices;
 
 		cubeMesh.startIndex = 0;
@@ -396,15 +414,21 @@ private:
 
 		assetManager.objects.push_back(cube);
 
-		assetManager.CreateObjectInstance("Cube", glm::vec3(2,2,0));
+        //assetManager.CreateObjectInstance("Cube");
 
-		//load wolf asset
+		assetManager.CreateObjectInstance("Cube", glm::vec3(0.0f, 1.5f, 0.0), glm::vec3(0), glm::vec3(0.5f));
 
-        assetManager.texturePaths.push_back("assets/image.jpg");
+		assetManager.CreateObjectInstance("Cube", glm::vec3(2.0f, 0.0f, 1.0), glm::vec3(0), glm::vec3(0.5f));
 
-		assetManager.LoadAsset("assets/scene.gltf", "Wolf");
+		assetManager.CreateObjectInstance("Cube", glm::vec3(-1.0f, 0.0f, 2.0), glm::vec3(60,0,60), glm::vec3(0.25f));
+
+		assetManager.CreateObjectInstance("Cube", glm::vec3(0.0f, -1.0f, 0.0), glm::vec3(0), glm::vec3(10,1,10));
+
+        assetManager.LoadAsset("assets/scene.gltf", "Wolf");
 
 		assetManager.CreateObjectInstance("Wolf");
+
+        assetManager.texturePaths.push_back("assets/image.jpg");
 
 		const size_t objectInstanceBufferSize = MAX_OBJECTS * sizeof(ObjectInstance);
 		objectInstanceBuffer = CreateBuffer(MAX_OBJECTS * objectInstanceBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
@@ -912,10 +936,12 @@ private:
         attachmentDescription.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         attachmentDescription.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;					// We don't care about initial layout of the attachment
         attachmentDescription.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;// Attachment will be transitioned to shader read at render pass end
+        // Attachment will be transitioned to shader read at render pass end
 
         VkAttachmentReference depthReference = {};
         depthReference.attachment = 0;
         depthReference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;			// Attachment will be used as depth/stencil during render pass
+        // Attachment will be used as depth/stencil during render pass
 
         VkSubpassDescription subpass = {};
         subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -1025,7 +1051,13 @@ private:
 		samplerLayoutBinding.pImmutableSamplers = nullptr;
 		samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-        std::vector<VkDescriptorSetLayoutBinding> bindings = { vertexBufferLayoutBinding, shadowDataLayoutBinding, samplerLayoutBinding };
+        VkDescriptorSetLayoutBinding objectInstanceLayoutBinding{};
+        objectInstanceLayoutBinding.binding = 3;
+        objectInstanceLayoutBinding.descriptorCount = 1;
+        objectInstanceLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        objectInstanceLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+        std::vector<VkDescriptorSetLayoutBinding> bindings = { vertexBufferLayoutBinding, shadowDataLayoutBinding, samplerLayoutBinding, objectInstanceLayoutBinding };
 
         VkDescriptorSetLayoutCreateInfo layoutInfo{};
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -1066,11 +1098,23 @@ private:
 
     void CreateGraphicsPipeline()
     {
-        auto vertShaderCode = ReadFile("shaders/shader.vert");
-        auto fragShaderCode = ReadFile("shaders/shader.frag");
 
-        VkShaderModule vertShaderModule = CreateShaderModule(vertShaderCode, shaderc_glsl_vertex_shader);
-        VkShaderModule fragShaderModule = CreateShaderModule(fragShaderCode, shaderc_glsl_fragment_shader);
+        //auto vertShaderCode = ReadFile("shaders/shader.vert");
+        //auto fragShaderCode = ReadFile("shaders/shader.frag");
+
+        //VkShaderModule vertShaderModule = CreateShaderModule(vertShaderCode, shaderc_glsl_vertex_shader);
+        //VkShaderModule fragShaderModule = CreateShaderModule(fragShaderCode, shaderc_glsl_fragment_shader);
+
+        
+		auto vertShaderCode = ReadFileStr("shaders/shader.vert");
+		auto fragShaderCode = ReadFileStr("shaders/shader.frag");
+
+        std::vector<uint32_t> spirvCode = CompileGLSLtoSPV(vertShaderCode, EShLangVertex);
+        VkShaderModule vertShaderModule = CreateShaderModule(spirvCode);
+
+		spirvCode = CompileGLSLtoSPV(fragShaderCode, EShLangFragment);
+		VkShaderModule fragShaderModule = CreateShaderModule(spirvCode);
+        
 
         //vertex shader
         VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
@@ -1253,11 +1297,22 @@ private:
 
     void CreateDebugQuadPipeline()
     {
-        auto vertShaderCode = ReadFile("shaders/debugQuad.vert");
-        auto fragShaderCode = ReadFile("shaders/debugQuad.frag");
+        //auto vertShaderCode = ReadFile("shaders/debugQuad.vert");
+        //auto fragShaderCode = ReadFile("shaders/debugQuad.frag");
 
-        VkShaderModule vertShaderModule = CreateShaderModule(vertShaderCode, shaderc_glsl_vertex_shader);
-        VkShaderModule fragShaderModule = CreateShaderModule(fragShaderCode, shaderc_glsl_fragment_shader);
+        //VkShaderModule vertShaderModule = CreateShaderModule(vertShaderCode, shaderc_glsl_vertex_shader);
+        //VkShaderModule fragShaderModule = CreateShaderModule(fragShaderCode, shaderc_glsl_fragment_shader);
+
+        
+        auto vertShaderCode = ReadFileStr("shaders/debugQuad.vert");
+        auto fragShaderCode = ReadFileStr("shaders/debugQuad.frag");
+
+        std::vector<uint32_t> spirvCode = CompileGLSLtoSPV(vertShaderCode, EShLangVertex);
+        VkShaderModule vertShaderModule = CreateShaderModule(spirvCode);
+
+        spirvCode = CompileGLSLtoSPV(fragShaderCode, EShLangFragment);
+        VkShaderModule fragShaderModule = CreateShaderModule(spirvCode);
+        
 
         //vertex shader
         VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
@@ -1440,11 +1495,15 @@ private:
 
     void CreateShadowPipeline()
     {
-        auto vertShaderCode = ReadFile("shaders/shadow.vert");
-        //auto fragShaderCode = ReadFile("shaders/shadow.frag");
+        
 
-        VkShaderModule vertShaderModule = CreateShaderModule(vertShaderCode, shaderc_glsl_vertex_shader);
-        //VkShaderModule fragShaderModule = CreateShaderModule(fragShaderCode, shaderc_glsl_fragment_shader);
+        //auto vertShaderCode = ReadFile("shaders/shadow.vert");
+
+        //VkShaderModule vertShaderModule = CreateShaderModule(vertShaderCode, shaderc_glsl_vertex_shader);
+
+        auto vertShaderCode = ReadFileStr("shaders/shadow.vert");
+        std::vector<uint32_t> spirvCode = CompileGLSLtoSPV(vertShaderCode, EShLangVertex);
+        VkShaderModule vertShaderModule = CreateShaderModule(spirvCode);
 
         //vertex shader
         VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
@@ -1571,7 +1630,7 @@ private:
         depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
         depthStencil.depthTestEnable = VK_TRUE;
         depthStencil.depthWriteEnable = VK_TRUE;
-        depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+        depthStencil.depthCompareOp = VK_COMPARE_OP_GREATER_OR_EQUAL;
         depthStencil.depthBoundsTestEnable = VK_FALSE;
         depthStencil.minDepthBounds = 0.0f; // Optional
         depthStencil.maxDepthBounds = 1.0f; // Optional
@@ -1924,9 +1983,14 @@ private:
 		imageInfo.imageView = shadowImageView;
 		imageInfo.sampler = shadowSampler;
 
+        VkDescriptorBufferInfo objectInstanceBufferInfo{};
+        objectInstanceBufferInfo.buffer = objectInstanceBuffer.buffer;
+        objectInstanceBufferInfo.offset = 0;
+        objectInstanceBufferInfo.range = MAX_OBJECTS * sizeof(ObjectInstance);
+
         for (size_t i = 0; i < MAX_FRAMES; i++)
         {
-            std::vector<VkWriteDescriptorSet> descriptorWrites(3);
+            std::vector<VkWriteDescriptorSet> descriptorWrites(4);
 
             descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             descriptorWrites[0].dstSet = shadowDescriptorSets[i];
@@ -1951,6 +2015,14 @@ private:
             descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             descriptorWrites[2].descriptorCount = 1;
             descriptorWrites[2].pImageInfo = &imageInfo;
+
+            descriptorWrites[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrites[3].dstSet = shadowDescriptorSets[i];
+            descriptorWrites[3].dstBinding = 3;
+            descriptorWrites[3].dstArrayElement = 0;
+            descriptorWrites[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            descriptorWrites[3].descriptorCount = 1;
+            descriptorWrites[3].pBufferInfo = &objectInstanceBufferInfo;
 
             vkUpdateDescriptorSets(vkb_device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
 
@@ -2019,13 +2091,28 @@ private:
 
     void RecordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) 
     {
-        //glm::mat4 lightProjection = glm::ortho(-50.0f, 50.0f, -50.0f, 50.0f, 0.1f, 100.0f);
+        
+        //assetManager.SetObjectInstanceTransform("Cube", 0, camera.Position + glm::vec3(0,1,0));
 
-        glm::mat4 lightProjection = glm::ortho(-10.0f, 10.0f, -10.0f, 10.0f, 0.1f, 20.0f);
+        ObjectInstance* objectInstanceData = (ObjectInstance*)objectInstanceBuffer.allocation->GetMappedData();
 
-        //glm::vec3 lightPos = glm::vec3(20.0f, 50.0f, -10.0f);
+        uint32_t instanceIndex = 0;
 
-        glm::vec3 lightPos = glm::vec3(2.f, 2.f, -0.f);
+        for (Object& object : assetManager.objects)
+        {
+            for (glm::mat4& transform : object.instances)
+            {
+                objectInstanceData[instanceIndex].model = transform;
+                instanceIndex++;
+            }
+        }
+
+        glm::vec3 lightPos(-2.0f, 4.0f, -1.0f);
+
+        float near_plane = 1.0f, far_plane = 10.f;
+        glm::mat4 lightProjection = glm::ortho(-5.0f, 5.0f, -5.0f, 5.0f, far_plane, near_plane);
+
+		lightProjection[1][1] *= -1;
 
         glm::mat4 lightView = glm::lookAt(lightPos, glm::vec3(0.0f), glm::vec3(0.0, 1.0, 0.0));
 
@@ -2050,7 +2137,7 @@ private:
             renderPassInfo.renderArea.extent.width = shadowMapResolution;
 
             std::vector<VkClearValue> clearValues(1);
-            clearValues[0].depthStencil = { 1.0f, 0 };
+            clearValues[0].depthStencil = { 0.0f, 0 };
 
             renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
             renderPassInfo.pClearValues = clearValues.data();
@@ -2086,9 +2173,39 @@ private:
 
             vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowPipelineLayout, 0, 1, &shadowDescriptorSets[currentFrame], 0, nullptr);
 
-            vkCmdBindIndexBuffer(commandBuffer, indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);   
+            vkCmdBindIndexBuffer(commandBuffer, indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
-            vkCmdDrawIndexed(commandBuffer, assetManager.indices.size(), 1, 0, 0, 0);
+            DrawQueue transparentQueue;
+
+            instanceIndex = 0;
+
+            for (Object& object : assetManager.objects)
+            {
+                uint32_t instanceCount = object.instances.size();
+
+                if (instanceCount == 0)
+                {
+                    continue;
+                }
+
+                for (Mesh& mesh : object.meshes)
+                {
+                    if (mesh.isTransparent)
+                    {
+                        transparentQueue.push_function([=]() {
+                            vkCmdDrawIndexed(commandBuffer, mesh.indexCount, instanceCount, mesh.startIndex, 0, instanceIndex);
+                            });
+                    }
+                    else
+                    {
+                        vkCmdDrawIndexed(commandBuffer, mesh.indexCount, instanceCount, mesh.startIndex, 0, instanceIndex);
+                    }
+                }
+
+                instanceIndex += instanceCount;
+            }
+
+            transparentQueue.flush();
 
             vkCmdEndRenderPass(commandBuffer);
         }
@@ -2102,7 +2219,7 @@ private:
             renderPassInfo.renderArea.extent = swapChainExtent;
 
             std::vector<VkClearValue> clearValues(2);
-            clearValues[0].color = { 1.0f, 1.0f, 1.0f, 1.0f };
+            clearValues[0].color = { 0.0f, 0.0f, 0.0f, 1.0f };
             clearValues[1].depthStencil = { 1.0f, 0 };
 
             renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
@@ -2146,22 +2263,6 @@ private:
             void* data = sceneDataUniformBuffer.allocation->GetMappedData();
             memcpy(data, &sceneData, sizeof(SceneData));
 
-
-			//copy instance data to object instance buffer
-
-			ObjectInstance* objectInstanceData = (ObjectInstance*)objectInstanceBuffer.allocation->GetMappedData();
-
-			uint32_t instanceIndex = 0;
-
-            for (Object& object : assetManager.objects)
-            {
-                for (glm::mat4& transform : object.instances)
-                {
-                    objectInstanceData[instanceIndex].model = transform;
-                    instanceIndex++;
-                }
-            }
-
             vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
 
             vkCmdBindIndexBuffer(commandBuffer, indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
@@ -2198,12 +2299,15 @@ private:
 
 			transparentQueue.flush();
 
+            if(renderDebugQuad)
+            { 
 			//render debug quad
-			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, debugQuadPipeline);
+			    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, debugQuadPipeline);
 
-			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, debugQuadPipelineLayout, 0, 1, &debugQuadDescriptorSets[currentFrame], 0, nullptr);
+			    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, debugQuadPipelineLayout, 0, 1, &debugQuadDescriptorSets[currentFrame], 0, nullptr);
 
-			vkCmdDraw(commandBuffer, 4, 1, 0, 0);
+			    vkCmdDraw(commandBuffer, 4, 1, 0, 0);
+			}
 
             vkCmdEndRenderPass(commandBuffer);
 
@@ -2373,6 +2477,55 @@ private:
         }
 
         return shaderModule;
+    }
+
+    VkShaderModule CreateShaderModule(const std::vector<uint32_t>& spirvCode) {
+        VkShaderModuleCreateInfo createInfo{};
+        createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        createInfo.codeSize = spirvCode.size() * sizeof(uint32_t);
+        createInfo.pCode = spirvCode.data();
+
+        VkShaderModule shaderModule;
+        if (vkCreateShaderModule(vkb_device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create shader module!");
+        }
+
+        return shaderModule;
+    }
+
+    std::vector<uint32_t> CompileGLSLtoSPV(const std::string& sourceCode, EShLanguage shaderType) {
+        const char* shaderStrings[1];
+        shaderStrings[0] = sourceCode.c_str();
+
+        glslang::TShader shader(shaderType);
+        shader.setStrings(shaderStrings, 1);
+
+		shader.setEnvInput(glslang::EShSourceGlsl, shaderType, glslang::EShClient::EShClientOpenGL, glslang::EShTargetClientVersion::EShTargetOpenGL_450);
+        shader.setEnvClient(glslang::EShClient::EShClientVulkan, glslang::EShTargetClientVersion::EShTargetVulkan_1_3);
+        shader.setEnvTarget(glslang::EShTargetLanguage::EShTargetSpv, glslang::EShTargetLanguageVersion::EShTargetSpv_1_3);
+
+        // Set up default resource limits
+        const TBuiltInResource* resources = GetDefaultResources();
+
+        // Parse the GLSL shader
+        if (!shader.parse(resources, 450, false, EShMsgDefault)) {
+			std::cout << std::string(shader.getInfoLog()) << std::endl;
+            throw std::runtime_error("GLSL Parsing Failed:\n" + std::string(shader.getInfoLog()));
+        }
+
+        // Link the shader into a program
+        glslang::TProgram program;
+        program.addShader(&shader);
+
+        if (!program.link(EShMsgDefault)) {
+            throw std::runtime_error("GLSL Linking Failed:\n" + std::string(program.getInfoLog()));
+        }
+
+        // Convert the linked program to SPIR-V
+        std::vector<uint32_t> spirv;
+        glslang::GlslangToSpv(*program.getIntermediate(shaderType), spirv);
+
+        return spirv;
     }
 
 

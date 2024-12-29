@@ -1,5 +1,4 @@
 #version 450
-#extension GL_KHR_vulkan_glsl : enable
 
 struct Vertex {
     vec3 position;
@@ -8,6 +7,11 @@ struct Vertex {
     float uv_y;
     vec3 color;
     int diffuseTextureID;
+};
+
+struct ObjectInstance
+{
+	mat4 model;
 };
 
 struct ShadowData
@@ -24,8 +28,12 @@ layout(binding = 1) uniform ShadowBuffer{
 	ShadowData shadowData;
 };
 
+layout(binding = 3, std430) readonly buffer ObjectInstanceBuffer{
+     ObjectInstance objectInstances[];
+};
+
 void main() {
     Vertex v = vertices[gl_VertexIndex];
-    gl_Position = shadowData.lightSpaceMatrix * shadowData.model * vec4(v.position, 1.0);
+    gl_Position = shadowData.lightSpaceMatrix * objectInstances[gl_InstanceIndex].model * vec4(v.position, 1.0);
 }
 

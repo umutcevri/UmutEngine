@@ -97,6 +97,53 @@ public:
 		}
 	}
 
+	Object& GetObject(std::string objectName)
+	{
+		auto it = objectMap.find(objectName);
+		if (it != objectMap.end())
+		{
+			return objects[it->second];
+		}
+		else
+		{
+			std::cout << "Object not found" << std::endl;
+			return objects[0];
+		}
+	}
+
+	void SetObjectInstanceTransform(std::string objectName, size_t instanceIndex, glm::vec3 position = glm::vec3(0, 0, 0), glm::vec3 rotation = glm::vec3(0, 0, 0), glm::vec3 scale = glm::vec3(1, 1, 1))
+	{
+		auto it = objectMap.find(objectName);
+		if (it != objectMap.end())
+		{
+			if (objects[it->second].instances.size() == 0)
+			{
+				std::cout << "No instances to transform" << std::endl;
+				return;
+			}
+
+			if (instanceIndex >= objects[it->second].instances.size())
+			{
+				std::cout << "Instance index out of range" << std::endl;
+				return;
+			}
+
+			glm::mat4 transform = glm::mat4(1.0f);
+			transform = glm::translate(transform, position);
+			transform = glm::rotate(transform, glm::radians(rotation.x), glm::vec3(1, 0, 0));
+			transform = glm::rotate(transform, glm::radians(rotation.y), glm::vec3(0, 1, 0));
+			transform = glm::rotate(transform, glm::radians(rotation.z), glm::vec3(0, 0, 1));
+			transform = glm::scale(transform, scale);
+
+			objects[it->second].instances[instanceIndex] = transform;
+		}
+		else
+		{
+			std::cout << "Object not found" << std::endl;
+		}
+	}
+
+
 	void ProcessNode(aiNode* node, const aiScene* scene, Object& object, const aiMatrix4x4& parentTransform = aiMatrix4x4())
 	{
 		aiMatrix4x4 nodeTransform = parentTransform * node->mTransformation;

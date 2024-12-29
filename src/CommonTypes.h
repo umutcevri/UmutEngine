@@ -10,6 +10,8 @@
 #include <filesystem>
 #include <unordered_set>
 #include <array>
+#include <sstream>
+#include <chrono>
 
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_FORCE_RADIANS
@@ -41,6 +43,21 @@ static std::vector<char> ReadFile(const std::string& filename)
     file.close();
 
     return buffer;
+}
+
+static std::string ReadFileStr(const std::string& filename)
+{
+    std::ifstream file(filename, std::ios::in | std::ios::binary);
+
+    if (!file.is_open()) {
+        throw std::runtime_error("Failed to open file!");
+    }
+
+    std::ostringstream stream;
+    stream << file.rdbuf();  // Read file into stream
+    file.close();
+
+    return stream.str();  // Return file content as a string
 }
 
 struct DeletionQueue
@@ -131,31 +148,228 @@ struct ShadowData
     glm::mat4 model;
 };
 
-std::vector<glm::vec3> cubeVertices = {
+std::vector<Vertex> cubeVertices = {
     // Front face
-    glm::vec3(-0.5f, -0.5f,  0.5f), // Bottom-left
-    glm::vec3(0.5f, -0.5f,  0.5f), // Bottom-right
-    glm::vec3(0.5f,  0.5f,  0.5f), // Top-right
-    glm::vec3(-0.5f,  0.5f,  0.5f), // Top-left
+    {
+        glm::vec3(-0.5f, -0.5f,  0.5f), // position
+        0.0f,                            // uv_x
+        glm::vec3(0.0f,  0.0f,  1.0f),  // normal
+        0.0f,                            // uv_y
+        glm::vec3(0.5f, 0.5f, 0.5f),    // color
+        -1                               // diffuseTextureID
+    },
+    {
+        glm::vec3(0.5f, -0.5f,  0.5f),
+        1.0f,
+        glm::vec3(0.0f,  0.0f,  1.0f),
+        0.0f,
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        -1
+    },
+    {
+        glm::vec3(0.5f,  0.5f,  0.5f),
+        1.0f,
+        glm::vec3(0.0f,  0.0f,  1.0f),
+        1.0f,
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        -1
+    },
+    {
+        glm::vec3(-0.5f,  0.5f,  0.5f),
+        0.0f,
+        glm::vec3(0.0f,  0.0f,  1.0f),
+        1.0f,
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        -1
+    },
 
     // Back face
-    glm::vec3(-0.5f, -0.5f, -0.5f), // Bottom-left
-    glm::vec3(0.5f, -0.5f, -0.5f), // Bottom-right
-    glm::vec3(0.5f,  0.5f, -0.5f), // Top-right
-    glm::vec3(-0.5f,  0.5f, -0.5f)  // Top-left
+    {
+        glm::vec3(0.5f, -0.5f, -0.5f),
+        0.0f,
+        glm::vec3(0.0f,  0.0f, -1.0f),
+        0.0f,
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        -1
+    },
+    {
+        glm::vec3(-0.5f, -0.5f, -0.5f),
+        1.0f,
+        glm::vec3(0.0f,  0.0f, -1.0f),
+        0.0f,
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        -1
+    },
+    {
+        glm::vec3(-0.5f,  0.5f, -0.5f),
+        1.0f,
+        glm::vec3(0.0f,  0.0f, -1.0f),
+        1.0f,
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        -1
+    },
+    {
+        glm::vec3(0.5f,  0.5f, -0.5f),
+        0.0f,
+        glm::vec3(0.0f,  0.0f, -1.0f),
+        1.0f,
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        -1
+    },
+
+    // Left face
+    {
+        glm::vec3(-0.5f, -0.5f, -0.5f),
+        0.0f,
+        glm::vec3(-1.0f,  0.0f,  0.0f),
+        0.0f,
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        -1
+    },
+    {
+        glm::vec3(-0.5f, -0.5f,  0.5f),
+        1.0f,
+        glm::vec3(-1.0f,  0.0f,  0.0f),
+        0.0f,
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        -1
+    },
+    {
+        glm::vec3(-0.5f,  0.5f,  0.5f),
+        1.0f,
+        glm::vec3(-1.0f,  0.0f,  0.0f),
+        1.0f,
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        -1
+    },
+    {
+        glm::vec3(-0.5f,  0.5f, -0.5f),
+        0.0f,
+        glm::vec3(-1.0f,  0.0f,  0.0f),
+        1.0f,
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        -1
+    },
+
+    // Right face
+    {
+        glm::vec3(0.5f, -0.5f,  0.5f),
+        0.0f,
+        glm::vec3(1.0f,  0.0f,  0.0f),
+        0.0f,
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        -1
+    },
+    {
+        glm::vec3(0.5f, -0.5f, -0.5f),
+        1.0f,
+        glm::vec3(1.0f,  0.0f,  0.0f),
+        0.0f,
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        -1
+    },
+    {
+        glm::vec3(0.5f,  0.5f, -0.5f),
+        1.0f,
+        glm::vec3(1.0f,  0.0f,  0.0f),
+        1.0f,
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        -1
+    },
+    {
+        glm::vec3(0.5f,  0.5f,  0.5f),
+        0.0f,
+        glm::vec3(1.0f,  0.0f,  0.0f),
+        1.0f,
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        -1
+    },
+
+    // Top face
+    {
+        glm::vec3(-0.5f,  0.5f,  0.5f),
+        0.0f,
+        glm::vec3(0.0f,  1.0f,  0.0f),
+        0.0f,
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        -1
+    },
+    {
+        glm::vec3(0.5f,  0.5f,  0.5f),
+        1.0f,
+        glm::vec3(0.0f,  1.0f,  0.0f),
+        0.0f,
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        -1
+    },
+    {
+        glm::vec3(0.5f,  0.5f, -0.5f),
+        1.0f,
+        glm::vec3(0.0f,  1.0f,  0.0f),
+        1.0f,
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        -1
+    },
+    {
+        glm::vec3(-0.5f,  0.5f, -0.5f),
+        0.0f,
+        glm::vec3(0.0f,  1.0f,  0.0f),
+        1.0f,
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        -1
+    },
+
+    // Bottom face
+    {
+        glm::vec3(-0.5f, -0.5f, -0.5f),
+        0.0f,
+        glm::vec3(0.0f, -1.0f,  0.0f),
+        0.0f,
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        -1
+    },
+    {
+        glm::vec3(0.5f, -0.5f, -0.5f),
+        1.0f,
+        glm::vec3(0.0f, -1.0f,  0.0f),
+        0.0f,
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        -1
+    },
+    {
+        glm::vec3(0.5f, -0.5f,  0.5f),
+        1.0f,
+        glm::vec3(0.0f, -1.0f,  0.0f),
+        1.0f,
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        -1
+    },
+    {
+        glm::vec3(-0.5f, -0.5f,  0.5f),
+        0.0f,
+        glm::vec3(0.0f, -1.0f,  0.0f),
+        1.0f,
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        -1
+    }
 };
 
 std::vector<uint32_t> cubeIndices = {
     // Front face
-   0, 1, 2, 2, 3, 0,
-   // Back face
-   4, 5, 6, 6, 7, 4,
-   // Left face
-   4, 0, 3, 3, 7, 4,
-   // Right face
-   1, 5, 6, 6, 2, 1,
+    0, 1, 2, 2, 3, 0,
+
+    // Back face
+    4, 5, 6, 6, 7, 4,
+
+    // Left face
+    8, 9,10,10,11, 8,
+
+    // Right face
+   12,13,14,14,15,12,
+
    // Top face
-   3, 2, 6, 6, 7, 3,
-   // Bottom face
-   4, 5, 1, 1, 0, 4
+  16,17,18,18,19,16,
+
+  // Bottom face
+ 20,21,22,22,23,20
 };

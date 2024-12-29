@@ -1,5 +1,4 @@
 #version 450
-#extension GL_KHR_vulkan_glsl : enable
 
 layout(location = 0) out vec3 fragColor;
 layout (location = 1) out vec2 outUV;
@@ -51,8 +50,9 @@ void main() {
 	outUV.y = v.uv_y;
     fragColor = v.color;
     outDiffuseTextureID = v.diffuseTextureID;
-    outNormal = mat3(transpose(inverse(sceneData.model))) * v.normal;
-    fragPos = vec3(sceneData.model * vec4(v.position, 1.0));
+    outNormal = mat3(transpose(inverse(objectInstances[gl_InstanceIndex].model))) * v.normal;
+    fragPos = vec3(objectInstances[gl_InstanceIndex].model * vec4(v.position, 1.0));
     lightPos = vec3(sceneData.lightPos);
     fragPosLightSpace = sceneData.lightSpaceMatrix * vec4(fragPos, 1.0);
+
 }
