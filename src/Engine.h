@@ -1,7 +1,8 @@
 #pragma once
 
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
+#define SDL_MAIN_HANDLED
+#include <SDL/SDL.h>
+#include <SDL/SDL_vulkan.h>
 
 #include "CommonTypes.h"
 
@@ -35,66 +36,38 @@ const int MAX_FRAMES = 2;
 
 bool renderDebugQuad = false;
 
-const uint32_t WIDTH = 1280;
-const uint32_t HEIGHT = 720;
-
 Camera camera;
-
-float lastX = WIDTH / 2.0f;
-float lastY = HEIGHT / 2.0f;
-bool firstMouse = true;
 
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
-void MouseCallback(GLFWwindow* window, double xposIn, double yposIn)
+void KeyboardInput()
 {
-    float xpos = static_cast<float>(xposIn);
-    float ypos = static_cast<float>(yposIn);
+    const Uint8* keystate = SDL_GetKeyboardState(NULL);
 
-    if (firstMouse)
-    {
-        lastX = xpos;
-        lastY = ypos;
-        firstMouse = false;
-    }
-
-    float xoffset = xpos - lastX;
-    float yoffset = lastY - ypos;
-
-    lastX = xpos;
-    lastY = ypos;
-
-    camera.ProcessMouseMovement(xoffset, yoffset);
-}
-
-void ProcessInput(GLFWwindow* window, float deltaTime)
-{
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-        glfwSetWindowShouldClose(window, true);
-
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+    // adjust accordingly
+    if (keystate[SDL_SCANCODE_W])
         camera.ProcessKeyboard(FORWARD, deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+    if (keystate[SDL_SCANCODE_S])
         camera.ProcessKeyboard(BACKWARD, deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+    if (keystate[SDL_SCANCODE_A])
         camera.ProcessKeyboard(LEFT, deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+    if (keystate[SDL_SCANCODE_D])
         camera.ProcessKeyboard(RIGHT, deltaTime);
+
 }
 
-void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) 
+void MouseInput()
 {
+    int xPos, yPos;
+    SDL_GetRelativeMouseState(&xPos, &yPos);
 
-    if (key == GLFW_KEY_O && action == GLFW_PRESS) {
-		renderDebugQuad = !renderDebugQuad;
-    }
+    camera.ProcessMouseMovement(xPos, -yPos);
 }
 
 
 class UEngine {
 private:
-    GLFWwindow* window;
 
     DeletionQueue deletionQueue;
 
@@ -209,6 +182,14 @@ private:
 
     AssetManager assetManager;
 
+    VkExtent2D _windowExtent{ 1280 , 720 };
+
+	SDL_Window* _window;
+
+	bool bQuit = false;
+
+    SDL_Event e;
+
 public:
     void Run() {
         InitWindow();
@@ -261,31 +242,34 @@ public:
 
         CreateSyncPrimitives();
 
-        MainLoop();
+        while (!bQuit)
+        {
+            MainLoop();
+        }
 
+        vkDeviceWaitIdle(vkb_device);
+        
         Cleanup();
     }
 
 private:
     void InitWindow()
     {
-        glfwInit();
+        SDL_Init(SDL_INIT_VIDEO);
 
-        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+        SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
 
-        glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+        _window = SDL_CreateWindow(
+            "Vulkan Engine",
+            SDL_WINDOWPOS_UNDEFINED,
+            SDL_WINDOWPOS_UNDEFINED,
+            _windowExtent.width,
+            _windowExtent.height,
+            window_flags);
 
-        window = glfwCreateWindow(WIDTH, HEIGHT, "Engine", nullptr, nullptr);
-
-        glfwSetWindowPos(window, 100, 100);
+        SDL_StartTextInput();
 
         camera = Camera(glm::vec3(0.0f, 0.0f, 0.0f));
-
-		glfwSetKeyCallback(window, keyCallback);
-
-        glfwSetCursorPosCallback(window, MouseCallback);
-
-        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
         glslang::InitializeProcess();
     }
@@ -306,7 +290,7 @@ private:
             vkb::destroy_instance(vkb_instance);
             });
 
-        if (glfwCreateWindowSurface(vkb_instance.instance, window, NULL, &surface) != VK_SUCCESS) 
+        if (SDL_Vulkan_CreateSurface(_window, vkb_instance.instance, &surface) != SDL_TRUE)
         {
             throw std::runtime_error("Failed to create surface!");
         }
@@ -327,6 +311,8 @@ private:
             throw std::runtime_error("Failed to select physical device!");
         }
         phys_device = physical_device_selector_return.value();
+
+		std::cout << "Selected physical device: " << phys_device.name << std::endl;
 
         vkb::DeviceBuilder device_builder{ phys_device };
         auto dev_ret = device_builder.build();
@@ -831,10 +817,12 @@ private:
     void CreateSwapChain()
     {
         int width, height;
-        glfwGetFramebufferSize(window, &width, &height);
+       
+        SDL_GetWindowSize(_window, &width, &height);
+
         while (width == 0 || height == 0) {
-            glfwGetFramebufferSize(window, &width, &height);
-            glfwWaitEvents();
+            SDL_WaitEvent(NULL);
+            SDL_GetWindowSize(_window, &width, &height);
         }
 
         swapChainExtent.height = static_cast<uint32_t>(height);
@@ -2413,18 +2401,40 @@ private:
     }
 
     void MainLoop() {
-        while (!glfwWindowShouldClose(window)) {
-            float currentFrame = static_cast<float>(glfwGetTime());
-            deltaTime = currentFrame - lastFrame;
-            lastFrame = currentFrame;
+        float currentFrame = (float)SDL_GetTicks64() / 1000.0f;
+        deltaTime = currentFrame - lastFrame;
+        lastFrame = currentFrame;
 
-            ProcessInput(window, deltaTime);
+        KeyboardInput();
+        MouseInput();
 
-            glfwPollEvents();
-            Draw();
+        while (SDL_PollEvent(&e) != 0) 
+        {
+            if (e.type == SDL_QUIT)
+                bQuit = true;
+
+            if (e.type == SDL_KEYDOWN)
+            {
+                if (e.key.keysym.sym == SDLK_ESCAPE)
+                {
+                    bQuit = true;
+                }
+                else if (e.key.keysym.sym == SDLK_m)
+                {
+                    if (SDL_GetRelativeMouseMode() == SDL_TRUE)
+                        SDL_SetRelativeMouseMode(SDL_FALSE);
+                    else
+                        SDL_SetRelativeMouseMode(SDL_TRUE);
+                }
+                else if (e.key.keysym.sym == SDLK_o)
+                {
+					renderDebugQuad = !renderDebugQuad;
+                }
+            }
+
         }
 
-        vkDeviceWaitIdle(vkb_device);
+        Draw();
     }
 
     void Cleanup() {
@@ -2440,9 +2450,7 @@ private:
 
         deletionQueue.flush();
 
-        glfwDestroyWindow(window);
-
-        glfwTerminate();
+        SDL_DestroyWindow(_window);
     }
 
     VkShaderModule CreateShaderModule(const std::vector<char>& code, shaderc_shader_kind shader_kind)
