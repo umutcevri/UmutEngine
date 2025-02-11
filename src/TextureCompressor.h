@@ -9,34 +9,59 @@ public:
         return filename.substr(0, filename.find_last_of('.'));
     }
 
-    static std::unordered_set<std::string> collectFileNames(const std::filesystem::path& folderPath) {
-        std::unordered_set<std::string> filenames;
+    static void collectFileNames(const std::filesystem::path& folderPath, std::unordered_set<std::string>& compress, std::unordered_set<std::string>& copy) 
+    {
         for (const auto& entry : std::filesystem::directory_iterator(folderPath)) {
             if (entry.is_regular_file()) {
                 std::string extension = entry.path().extension().string();
-                if(extension != ".png" && extension != ".ktx2") continue;
-                filenames.insert(removeExtension(entry.path().filename().string()));
+                if (extension != ".png" && extension != ".ktx2")
+                {
+                    copy.insert(entry.path().filename().string());
+                }
+                else
+                {
+					compress.insert(removeExtension(entry.path().filename().string()));
+                }
             }
         }
-        return filenames;
     }
 
-    static void CompressTextures(std::filesystem::path rawTexturesPath, std::filesystem::path compressedTexturesPath)
+    static void CompressTextures(std::filesystem::path sourceTexturesPath, std::filesystem::path destTexturesPath)
     {
 
-        if (!std::filesystem::exists(rawTexturesPath) || !std::filesystem::exists(compressedTexturesPath)) {
+        if (!std::filesystem::exists(sourceTexturesPath) || !std::filesystem::exists(destTexturesPath)) {
             std::cerr << "One or both directories do not exist.\n";
             return;
         }
 
-        std::unordered_set<std::string> rawTextures = collectFileNames(rawTexturesPath);
-        std::unordered_set<std::string> compressedTextures = collectFileNames(compressedTexturesPath);
+		std::unordered_set<std::string> sourceCompress;
+		std::unordered_set<std::string> sourceCopy;
 
+		std::unordered_set<std::string> destCompress;
+		std::unordered_set<std::string> destCopy;
+
+        collectFileNames(sourceTexturesPath, sourceCompress, sourceCopy);
+        collectFileNames(destTexturesPath, destCompress, destCopy);
+
+        std::vector<std::string> filesToCopy;
         std::vector<std::string> filesToCompress;
-        
-        for (const std::string& file : rawTextures) 
+
+		for (const std::string& file : sourceCopy)
         {
-            if (compressedTextures.find(file) == compressedTextures.end()) 
+            if (destCopy.find(file) == destCopy.end())
+            {
+				filesToCopy.push_back(file);
+			}
+		}
+
+        for (const std::string& file : filesToCopy)
+		{
+			std::filesystem::copy_file(sourceTexturesPath / file, destTexturesPath / file, std::filesystem::copy_options::overwrite_existing);
+		}
+        
+        for (const std::string& file : sourceCompress)
+        {
+            if (destCompress.find(file) == destCompress.end())
             {           
                 filesToCompress.push_back(file);
             }        
@@ -58,7 +83,7 @@ public:
 
         for (const std::string& file : filesToCompress) 
         {
-            batch_file << (rawTexturesPath / (file + ".png")).string() << " --format bc7 --output " << (compressedTexturesPath / (file + ".ktx2")).string() << " --no-mips\n";
+            batch_file << (sourceTexturesPath / (file + ".png")).string() << " --format bc7 --output " << (destTexturesPath / (file + ".ktx2")).string() << " --no-mips\n";
         }
 
         batch_file.close();

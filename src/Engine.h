@@ -30,7 +30,7 @@
 
 const int MAX_TEXTURE_COUNT = 256;
 
-const int MAX_OBJECTS = 1024;
+const int MAX_OBJECTS = 100;
 
 const int MAX_FRAMES = 2;
 
@@ -402,7 +402,7 @@ private:
 
         //assetManager.CreateObjectInstance("Cube");
 
-		assetManager.CreateObjectInstance("Cube", glm::vec3(0.0f, 1.5f, 0.0), glm::vec3(0), glm::vec3(0.5f));
+		//assetManager.CreateObjectInstance("Cube", glm::vec3(-0.5f, 1.0f, 0.0), glm::vec3(0), glm::vec3(0.5f));
 
 		assetManager.CreateObjectInstance("Cube", glm::vec3(2.0f, 0.0f, 1.0), glm::vec3(0), glm::vec3(0.5f));
 
@@ -410,9 +410,68 @@ private:
 
 		assetManager.CreateObjectInstance("Cube", glm::vec3(0.0f, -1.0f, 0.0), glm::vec3(0), glm::vec3(10,1,10));
 
-        assetManager.LoadAsset("assets/scene.gltf", "Wolf");
+        //assetManager.LoadAsset("assets/Wolf.fbx", "Wolf");
 
-		assetManager.CreateObjectInstance("Wolf");
+		//assetManager.CreateObjectInstance("Wolf", glm::vec3(0.0f, 0.0f, 0.0), glm::vec3(0), glm::vec3(0.01f));
+
+		//assetManager.PlayAnimation("Wolf", 0, 0);
+
+		assetManager.LoadAsset("assets/Wolf.dae", "Bot");
+
+		assetManager.CreateObjectInstance("Bot", glm::vec3(0.0f, 0.0f, 0.0), glm::vec3(0));
+
+		assetManager.PlayAnimation("Bot", 0, 0);
+
+        for (size_t i = 0; i < assetManager.vertices.size(); ++i)
+        {
+            bool hasBone = false;
+
+            // Check if any bone ID is not -1
+            for (int j = 0; j < MAX_BONE_INFLUENCE; ++j)
+            {
+                if (assetManager.vertices[i].boneIDs[j] != -1)
+                {
+                    hasBone = true;
+                    break;
+                }
+            }
+
+            // Log a warning if the vertex has no valid bone ID
+            if (!hasBone)
+            {
+                //std::cerr << "Warning: Vertex " << i << " has no bone IDs assigned (all -1)." << std::endl;
+                // Optionally log additional info about the vertex
+                // std::cerr << "Position: " << vertices[i].position.x << ", "
+                //           << vertices[i].position.y << ", " << vertices[i].position.z << std::endl;
+                continue; // Skip further checks for bone weights
+            }
+
+            // If there are bone IDs, check if all weights are zero
+            bool hasWeight = false;
+            for (int j = 0; j < MAX_BONE_INFLUENCE; ++j)
+            {
+                if (assetManager.vertices[i].boneWeights[j] > 0.0f)
+                {
+                    hasWeight = true;
+                    break;
+                }
+            }
+
+            // Log a warning if the vertex has no bone weights
+            if (!hasWeight)
+            {
+                std::cerr << "Warning: Vertex " << i << " has bone IDs but no weights assigned." << std::endl;
+                // Optionally log the vertex position for further inspection
+                // std::cerr << "Position: " << vertices[i].position.x << ", "
+                //           << vertices[i].position.y << ", " << vertices[i].position.z << std::endl;
+                if (i > 0)
+                {
+                    assetManager.vertices[i].boneIDs = assetManager.vertices[i + 1].boneIDs;
+                    assetManager.vertices[i].boneWeights = assetManager.vertices[i + 1].boneWeights;
+                    std::cerr << "Assigned bone IDs and weights from Vertex " << (i + 1) << "." << std::endl;
+                }
+            }
+        }
 
         assetManager.texturePaths.push_back("assets/image.jpg");
 
@@ -2082,15 +2141,18 @@ private:
         
         //assetManager.SetObjectInstanceTransform("Cube", 0, camera.Position + glm::vec3(0,1,0));
 
-        ObjectInstance* objectInstanceData = (ObjectInstance*)objectInstanceBuffer.allocation->GetMappedData();
+        ObjectInstanceData* objectInstanceData = (ObjectInstanceData*)objectInstanceBuffer.allocation->GetMappedData();
 
         uint32_t instanceIndex = 0;
 
         for (Object& object : assetManager.objects)
         {
-            for (glm::mat4& transform : object.instances)
+            for (ObjectInstance& instance : object.instances)
             {
-                objectInstanceData[instanceIndex].model = transform;
+                std::copy(std::begin(instance.boneTransforms), std::end(instance.boneTransforms), std::begin(objectInstanceData[instanceIndex].boneTransforms));
+				objectInstanceData[instanceIndex].model = instance.model;
+				objectInstanceData[instanceIndex].currentAnimation = instance.currentAnimation;
+
                 instanceIndex++;
             }
         }
@@ -2433,6 +2495,8 @@ private:
             }
 
         }
+
+		assetManager.UpdateAnimationSystem(deltaTime);
 
         Draw();
     }

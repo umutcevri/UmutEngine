@@ -13,10 +13,13 @@
 #include <sstream>
 #include <chrono>
 
+#define GLM_ENABLE_EXPERIMENTAL
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_FORCE_RADIANS
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/quaternion.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
@@ -107,6 +110,8 @@ struct Vertex {
     float uv_y;
     glm::vec3 color;
     int diffuseTextureID;
+    glm::vec4 boneIDs = glm::vec4(-1);
+	glm::vec4 boneWeights;
 };
 
 struct SceneData
@@ -125,15 +130,20 @@ struct Mesh
 	bool isTransparent = false;
 };
 
-struct Object
-{
-	std::vector<glm::mat4> instances;
-	std::vector<Mesh> meshes;
-};
-
 struct ObjectInstance
 {
+    glm::mat4 model;
+	glm::mat4 boneTransforms[100];
+	int currentAnimation = -1;
+	float currentAnimationTime = 0.0f;
+};
+
+struct ObjectInstanceData
+{
 	glm::mat4 model;
+	glm::mat4 boneTransforms[100];
+	int currentAnimation = -1;
+	int padding[3];
 };
 
 struct GPUPushConstants
