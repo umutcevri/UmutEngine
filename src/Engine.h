@@ -416,9 +416,9 @@ private:
 
 		//assetManager.PlayAnimation("Wolf", 0, 0);
 
-		assetManager.LoadAsset("assets/Wolf.dae", "Bot");
+		assetManager.LoadAsset("assets/Sword And Shield Run.dae", "Bot");
 
-		assetManager.CreateObjectInstance("Bot", glm::vec3(0.0f, 0.0f, 0.0), glm::vec3(0));
+		assetManager.CreateObjectInstance("Bot");
 
 		assetManager.PlayAnimation("Bot", 0, 0);
 
@@ -574,8 +574,8 @@ private:
         //pngs must be compressed by this point
         if (extension == "png")
         {
-            extension = "ktx2";
-            texturePath = texturePath.substr(0, texturePath.find_last_of(".") + 1).append(extension);
+            //extension = "ktx2";
+            //texturePath = texturePath.substr(0, texturePath.find_last_of(".") + 1).append(extension);
         }
 
         if(extension == "ktx2")
@@ -613,7 +613,7 @@ private:
             images.push_back(textureImageView);
 		}
 
-        else if (extension == "jpg" || extension == "jpeg")
+        else if (extension == "png" || extension == "jpg" || extension == "jpeg")
         {
 
             int texWidth, texHeight, texChannels;

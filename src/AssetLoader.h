@@ -16,198 +16,64 @@ inline glm::mat4 aiMatrix4x4ToGlm(const aiMatrix4x4* from)
 	return to;
 }
 
-struct KeyPosition
+struct SceneNode
 {
-	glm::vec3 position;
-	float timeStamp;
+	std::string name;
+	glm::mat4 transformation;
+	std::vector<SceneNode> children;
 };
 
-struct KeyRotation
+struct Bone
 {
-	glm::quat orientation;
-	float timeStamp;
-};
-
-struct KeyScale
-{
-	glm::vec3 scale;
-	float timeStamp;
-};
-
-class Bone
-{
-private:
-	std::vector<KeyPosition> m_Positions;
-	std::vector<KeyRotation> m_Rotations;
-	std::vector<KeyScale> m_Scales;
-	int m_NumPositions;
-	int m_NumRotations;
-	int m_NumScalings;
-
-	glm::mat4 m_LocalTransform;
-	std::string m_Name;
-	int m_ID;
-
-public:
-	Bone(const std::string& name, int ID, const aiNodeAnim* channel)
-		:
-		m_Name(name),
-		m_ID(ID),
-		m_LocalTransform(1.0f)
-	{
-		m_NumPositions = channel->mNumPositionKeys;
-
-		std::cout << "Num of positions" << m_NumPositions << std::endl;
-
-		for (int positionIndex = 0; positionIndex < m_NumPositions; ++positionIndex)
-		{
-			aiVector3D aiPosition = channel->mPositionKeys[positionIndex].mValue;
-			float timeStamp = channel->mPositionKeys[positionIndex].mTime;
-			KeyPosition data;
-			data.position = glm::vec3(aiPosition.x, aiPosition.y, aiPosition.z);
-			data.timeStamp = timeStamp;
-			m_Positions.push_back(data);
-		}
-
-		m_NumRotations = channel->mNumRotationKeys;
-		for (int rotationIndex = 0; rotationIndex < m_NumRotations; ++rotationIndex)
-		{
-			aiQuaternion aiOrientation = channel->mRotationKeys[rotationIndex].mValue;
-			float timeStamp = channel->mRotationKeys[rotationIndex].mTime;
-			KeyRotation data;
-			data.orientation = glm::quat(aiOrientation.w, aiOrientation.x, aiOrientation.y, aiOrientation.z);
-			data.timeStamp = timeStamp;
-			m_Rotations.push_back(data);
-		}
-
-		m_NumScalings = channel->mNumScalingKeys;
-		for (int keyIndex = 0; keyIndex < m_NumScalings; ++keyIndex)
-		{
-			aiVector3D scale = channel->mScalingKeys[keyIndex].mValue;
-			float timeStamp = channel->mScalingKeys[keyIndex].mTime;
-			KeyScale data;
-			data.scale = glm::vec3(scale.x, scale.y, scale.z);
-			data.timeStamp = timeStamp;
-			m_Scales.push_back(data);
-		}
-	}
-
-	Bone(){}
-
-	void Update(float animationTime)
-	{
-		glm::mat4 translation = InterpolatePosition(animationTime);
-		glm::mat4 rotation = InterpolateRotation(animationTime);
-		glm::mat4 scale = InterpolateScaling(animationTime);
-		m_LocalTransform = translation * rotation * scale;
-	}
-	glm::mat4 GetLocalTransform() { return m_LocalTransform; }
-	std::string GetBoneName() const { return m_Name; }
-	int GetBoneID() { return m_ID; }
-
-	int GetPositionIndex(float animationTime)
-	{
-		for (int index = 0; index < m_NumPositions - 1; ++index)
-		{
-			if (animationTime < m_Positions[index + 1].timeStamp)
-				return index;
-		}
-		assert(0);
-	}
-
-	int GetRotationIndex(float animationTime)
-	{
-		for (int index = 0; index < m_NumRotations - 1; ++index)
-		{
-			if (animationTime < m_Rotations[index + 1].timeStamp)
-				return index;
-		}
-		assert(0);
-	}
-
-	int GetScaleIndex(float animationTime)
-	{
-		for (int index = 0; index < m_NumScalings - 1; ++index)
-		{
-			if (animationTime < m_Scales[index + 1].timeStamp)
-				return index;
-		}
-		assert(0);
-	}
-
-
-private:
-
-	float GetScaleFactor(float lastTimeStamp, float nextTimeStamp, float animationTime)
-	{
-		float scaleFactor = 0.0f;
-		float midWayLength = animationTime - lastTimeStamp;
-		float framesDiff = nextTimeStamp - lastTimeStamp;
-		scaleFactor = midWayLength / framesDiff;
-		return scaleFactor;
-	}
-
-	glm::mat4 InterpolatePosition(float animationTime)
-	{
-		if (1 == m_NumPositions)
-			return glm::translate(glm::mat4(1.0f), m_Positions[0].position);
-
-		int p0Index = GetPositionIndex(animationTime);
-		int p1Index = p0Index + 1;
-		float scaleFactor = GetScaleFactor(m_Positions[p0Index].timeStamp,
-			m_Positions[p1Index].timeStamp, animationTime);
-		glm::vec3 finalPosition = glm::mix(m_Positions[p0Index].position, m_Positions[p1Index].position
-			, scaleFactor);
-		return glm::translate(glm::mat4(1.0f), finalPosition);
-	}
-
-	glm::mat4 InterpolateRotation(float animationTime)
-	{
-		if (1 == m_NumRotations)
-		{
-			auto rotation = glm::normalize(m_Rotations[0].orientation);
-			return glm::toMat4(rotation);
-		}
-
-		int p0Index = GetRotationIndex(animationTime);
-		int p1Index = p0Index + 1;
-		float scaleFactor = GetScaleFactor(m_Rotations[p0Index].timeStamp,
-			m_Rotations[p1Index].timeStamp, animationTime);
-		glm::quat finalRotation = glm::slerp(m_Rotations[p0Index].orientation, m_Rotations[p1Index].orientation
-			, scaleFactor);
-		finalRotation = glm::normalize(finalRotation);
-		return glm::toMat4(finalRotation);
-
-	}
-
-	glm::mat4 InterpolateScaling(float animationTime)
-	{
-		if (1 == m_NumScalings)
-			return glm::scale(glm::mat4(1.0f), m_Scales[0].scale);
-
-		int p0Index = GetScaleIndex(animationTime);
-		int p1Index = p0Index + 1;
-		float scaleFactor = GetScaleFactor(m_Scales[p0Index].timeStamp,
-			m_Scales[p1Index].timeStamp, animationTime);
-		glm::vec3 finalScale = glm::mix(m_Scales[p0Index].scale, m_Scales[p1Index].scale
-			, scaleFactor);
-		return glm::scale(glm::mat4(1.0f), finalScale);
-	}
-};
-
-struct BoneInfo
-{
+	std::string name;
 	int id;
 	glm::mat4 offset;
+};
+
+struct PositionKey
+{
+	glm::vec3 value;
+	double time;
+};
+
+struct RotationKey
+{
+	glm::quat value;
+	double time;
+};
+
+struct ScalingKey
+{
+	glm::vec3 value;
+	double time;
+};
+
+struct AnimationChannel
+{
+	std::string nodeName;
+	std::vector<PositionKey> positionKeys;
+	std::vector<RotationKey> rotationKeys;
+	std::vector<ScalingKey> scalingKeys;
+};
+
+struct Animation
+{
+	double duration;
+	double ticksPerSecond;
+	std::unordered_map<std::string, AnimationChannel> channels;
 };
 
 struct Object
 {
 	std::vector<ObjectInstance> instances;
+
 	std::vector<Mesh> meshes;
-	const aiScene* objectAsset = nullptr;
-	std::unordered_map<std::string, BoneInfo> boneInfoMap;
-	std::vector<Bone> bones;
+
+	std::vector<Animation> animations;
+
+	std::unordered_map<std::string, Bone> bones;
+
+	SceneNode sceneRoot;
 };
 
 class AssetManager
@@ -218,6 +84,7 @@ public:
 	std::vector<std::string> texturePaths;
 
 	std::vector<Vertex> vertices;
+
 	std::vector<uint32_t> indices;
 
 	std::vector<Object> objects;
@@ -231,7 +98,7 @@ public:
 
 	void LoadAsset(const char* path, std::string objectName, unsigned int assimpFlags = 0)
 	{
-		const aiScene* scene = importer.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | assimpFlags);
+		const aiScene* scene = importer.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenSmoothNormals);
 
 		if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
 		{
@@ -239,14 +106,57 @@ public:
 			return;
 		}
 
+
+		std::cout << scene->mNumAnimations << " animations" << std::endl;
+
 		Object object{};
 
-		object.objectAsset = scene;
-
-		ProcessNode(scene->mRootNode, scene, object);
+		ProcessNode(scene->mRootNode, object.sceneRoot, scene, object);
 
 		if (object.meshes.size() > 0)
 		{
+			if (scene->HasAnimations())
+			{
+				for (int i = 0; i < scene->mNumAnimations; i++)
+				{
+					aiAnimation* animation = scene->mAnimations[i];
+					Animation anim;
+					anim.duration = animation->mDuration;
+					anim.ticksPerSecond = animation->mTicksPerSecond;
+
+					for (int j = 0; j < animation->mNumChannels; j++)
+					{
+						aiNodeAnim* channel = animation->mChannels[j];
+						AnimationChannel animChannel;
+						animChannel.nodeName = channel->mNodeName.C_Str();
+						for (int k = 0; k < channel->mNumPositionKeys; k++)
+						{
+							PositionKey key;
+							key.time = channel->mPositionKeys[k].mTime;
+							key.value = glm::vec3(channel->mPositionKeys[k].mValue.x, channel->mPositionKeys[k].mValue.y, channel->mPositionKeys[k].mValue.z);
+							animChannel.positionKeys.push_back(key);
+						}
+						for (int k = 0; k < channel->mNumRotationKeys; k++)
+						{
+							RotationKey key;
+							key.time = channel->mRotationKeys[k].mTime;
+							key.value = glm::quat(channel->mRotationKeys[k].mValue.w, channel->mRotationKeys[k].mValue.x, channel->mRotationKeys[k].mValue.y, channel->mRotationKeys[k].mValue.z);
+							animChannel.rotationKeys.push_back(key);
+						}
+						for (int k = 0; k < channel->mNumScalingKeys; k++)
+						{
+							ScalingKey key;
+							key.time = channel->mScalingKeys[k].mTime;
+							key.value = glm::vec3(channel->mScalingKeys[k].mValue.x, channel->mScalingKeys[k].mValue.y, channel->mScalingKeys[k].mValue.z);
+							animChannel.scalingKeys.push_back(key);
+						}
+						anim.channels[animChannel.nodeName] = animChannel;
+					}
+
+					object.animations.push_back(anim);
+				}
+			}
+
 			objectMap[objectName] = objects.size();
 			objects.push_back(object);
 		}
@@ -358,8 +268,11 @@ public:
 		}
 	}
 
-	void ProcessNode(aiNode* node, const aiScene* scene, Object& object, const aiMatrix4x4& parentTransform = aiMatrix4x4())
+	void ProcessNode(aiNode* node, SceneNode &sceneNode, const aiScene* scene, Object& object, const aiMatrix4x4& parentTransform = aiMatrix4x4())
 	{
+		sceneNode.name = node->mName.C_Str();
+		sceneNode.transformation = aiMatrix4x4ToGlm(&node->mTransformation);
+
 		aiMatrix4x4 nodeTransform = parentTransform * node->mTransformation;
 
 		for (unsigned int i = 0; i < node->mNumMeshes; i++)
@@ -376,7 +289,9 @@ public:
 
 		for (unsigned int i = 0; i < node->mNumChildren; i++)
 		{
-			ProcessNode(node->mChildren[i], scene, object, nodeTransform);
+			sceneNode.children.push_back(SceneNode());
+
+			ProcessNode(node->mChildren[i], sceneNode.children[i], scene, object, nodeTransform);
 		}
 	}
 
@@ -537,58 +452,52 @@ public:
 
 	}
 
-	void SetVertexBoneData(Vertex& vertex, int boneID, float weight)
-	{
-		for (int i = 0; i < 4; i++)
-		{
-			if (vertex.boneIDs[i] < 0)
-			{
-				vertex.boneWeights[i] = weight;
-				vertex.boneIDs[i] = boneID;
-				break;
-			}
-		}
-	}
-
 	void ExtractBoneWeightForVertices(std::vector<Vertex> &vertices, aiMesh* mesh, Object &object)
 	{
 		for (int boneIndex = 0; boneIndex < mesh->mNumBones; boneIndex++)
 		{
+			//bone id in final scene bone array
 			int boneID = -1;
+
 			std::string boneName = mesh->mBones[boneIndex]->mName.C_Str();
-			if (object.boneInfoMap.find(boneName) == object.boneInfoMap.end())
+
+			//if bone does not exists
+			if(object.bones.find(boneName) == object.bones.end())
 			{
-				BoneInfo newBoneInfo;
-				newBoneInfo.id = object.boneInfoMap.size();
-				boneID = object.boneInfoMap.size();
+				Bone newBone;
 
-				newBoneInfo.offset = aiMatrix4x4ToGlm(&(mesh->mBones[boneIndex]->mOffsetMatrix));
-				object.boneInfoMap[boneName] = newBoneInfo;
+				newBone.id = object.bones.size();
+				newBone.name = boneName;
+				newBone.offset = aiMatrix4x4ToGlm(&(mesh->mBones[boneIndex]->mOffsetMatrix));
 
-				
+				object.bones[boneName] = newBone;
+
+				boneID = newBone.id;
 			}
 			else
 			{
-				boneID = object.boneInfoMap[boneName].id;
+				boneID = object.bones[boneName].id;
 			}
 
-			assert(boneID != -1);
-
-			auto weights = mesh->mBones[boneIndex]->mWeights;
+			aiVertexWeight* weights = mesh->mBones[boneIndex]->mWeights;
 			int numWeights = mesh->mBones[boneIndex]->mNumWeights;
-
-
 
 			for (int weightIndex = 0; weightIndex < numWeights; weightIndex++)
 			{
-				int vertexId = weights[weightIndex].mVertexId;
+				int vertexID = weights[weightIndex].mVertexId;
 				float weight = weights[weightIndex].mWeight;
+				
+				for (int i = 0; i < 4; i++)
+				{
+					//find empty bone slot and assign values
+					if (vertices[vertexID].boneIDs[i] < 0)
+					{
+						vertices[vertexID].boneWeights[i] = weight;
+						vertices[vertexID].boneIDs[i] = boneID;
 
-
-
-				assert(vertexId <= vertices.size());
-
-				SetVertexBoneData(vertices[vertexId], boneID, weight);
+						break;
+					}
+				}
 			}
 		}
 	}
@@ -601,86 +510,116 @@ public:
 		{
 			Object* object = GetObject(objectName);
 
-			if (object->objectAsset->mNumAnimations == 0)
+			if (object->animations.size() == 0)
 			{
 				std::cout << "Object has no animations!" << std::endl;
 				return;
 			}
 
-			if (animationIndex >= object->objectAsset->mNumAnimations)
+			if (animationIndex >= object->animations.size())
 			{
 				std::cout << "Animation index out of range!" << std::endl;
 				return;
-			}
-
-			const aiAnimation* animation = object->objectAsset->mAnimations[animationIndex];
-
-			int numOfChannels = animation->mNumChannels;
-
-			std::cout << "Num of channels: " << numOfChannels << std::endl;
-
-			for (int i = 0; i < numOfChannels; i++)
-			{
-				const aiNodeAnim* channel = animation->mChannels[i];
-				std::string channelName = channel->mNodeName.C_Str();
-
-				int boneIndex = -1;
-
-				if (object->boneInfoMap.find(channelName) == object->boneInfoMap.end())
-				{
-					boneIndex = object->boneInfoMap.size();
-					object->boneInfoMap[channelName].id = object->boneInfoMap.size();
-				}
-				else
-				{
-					boneIndex = object->boneInfoMap[channelName].id;
-				}
-
-				std::cout << "Channel name" << channelName << std::endl;
-
-				if (boneIndex >= object->bones.size())
-				{
-					object->bones.resize(boneIndex + 1);
-				}
-
-				object->bones[boneIndex] = Bone(channelName, boneIndex, channel);
-
 			}
 
 			instance->currentAnimation = animationIndex;
 		}
 	}
 
-	void CalculateBoneTransform(Object* object, ObjectInstance* instance, aiNode* node, glm::mat4 parentTransform)
+	glm::mat4 GetAnimationScalingMatrix(std::vector<ScalingKey>& keys, double currentAnimationTime)
 	{
-		std::string nodeName = node->mName.C_Str();
+		int previousKeyIndex;
+		int nextKeyIndex;
 
-		glm::mat4 nodeTransform = aiMatrix4x4ToGlm(&node->mTransformation);
-
-		Bone* bone = nullptr;
-
-		if (object->boneInfoMap.find(nodeName) != object->boneInfoMap.end())
+		//get indexes for previous and next keys relative to current time
+		for (int index = 0; index < keys.size() - 1; index++)
 		{
-			bone = &object->bones[object->boneInfoMap[nodeName].id];
-			bone->Update(instance->currentAnimationTime);
+			if (currentAnimationTime < keys[index + 1].time)
+			{
+				previousKeyIndex = index;
+				nextKeyIndex = index + 1;
+				break;
+			}
 		}
 
-		if (bone != nullptr)
+		float mixFactor = (currentAnimationTime - keys[previousKeyIndex].time) / (keys[nextKeyIndex].time - keys[previousKeyIndex].time);
+
+		glm::vec3 scaling = glm::mix(keys[previousKeyIndex].value, keys[nextKeyIndex].value, mixFactor);
+
+		return glm::scale(glm::mat4(1.0f), scaling);
+	}
+
+	glm::mat4 GetAnimationRotationMatrix(std::vector<RotationKey>& keys, double currentAnimationTime)
+	{
+		int previousKeyIndex;
+		int nextKeyIndex;
+		//get indexes for previous and next keys relative to current time
+		for (int index = 0; index < keys.size() - 1; index++)
 		{
-			nodeTransform = bone->GetLocalTransform();
+			if (currentAnimationTime < keys[index + 1].time)
+			{
+				previousKeyIndex = index;
+				nextKeyIndex = index + 1;
+				break;
+			}
+		}
+
+		float mixFactor = (currentAnimationTime - keys[previousKeyIndex].time) / (keys[nextKeyIndex].time - keys[previousKeyIndex].time);
+
+		glm::quat rotation = glm::slerp(keys[previousKeyIndex].value, keys[nextKeyIndex].value, mixFactor);
+
+		return glm::toMat4(rotation);
+	}
+
+	glm::mat4 GetAnimationPositionMatrix(std::vector<PositionKey>& keys, double currentAnimationTime)
+	{
+		int previousKeyIndex;
+		int nextKeyIndex;
+		//get indexes for previous and next keys relative to current time
+		for (int index = 0; index < keys.size() - 1; index++)
+		{
+			if (currentAnimationTime < keys[index + 1].time)
+			{
+				previousKeyIndex = index;
+				nextKeyIndex = index + 1;
+				break;
+			}
+		}
+		float mixFactor = (currentAnimationTime - keys[previousKeyIndex].time) / (keys[nextKeyIndex].time - keys[previousKeyIndex].time);
+		glm::vec3 position = glm::mix(keys[previousKeyIndex].value, keys[nextKeyIndex].value, mixFactor);
+		return glm::translate(glm::mat4(1.0f), position);
+	}
+
+	glm::mat4 GetAnimationNodeTransform(AnimationChannel& channel, double currentAnimationTime)
+	{
+		glm::mat4 scaling = GetAnimationScalingMatrix(channel.scalingKeys, currentAnimationTime);
+		glm::mat4 rotation = GetAnimationRotationMatrix(channel.rotationKeys, currentAnimationTime);
+		glm::mat4 position = GetAnimationPositionMatrix(channel.positionKeys, currentAnimationTime);
+
+		return position * rotation * scaling;
+	}
+
+	void UpdateBoneTransforms(Object* object, ObjectInstance* instance, SceneNode& sceneNode, glm::mat4 parentTransform)
+	{
+		std::string nodeName = sceneNode.name;
+		glm::mat4 nodeTransform = sceneNode.transformation;
+
+		if (object->animations[instance->currentAnimation].channels.find(nodeName) != object->animations[instance->currentAnimation].channels.end())
+		{
+			nodeTransform = GetAnimationNodeTransform(object->animations[instance->currentAnimation].channels[nodeName], instance->currentAnimationTime);
 		}
 
 		glm::mat4 globalTransform = parentTransform * nodeTransform;
 
-		if (object->boneInfoMap.find(nodeName) != object->boneInfoMap.end())
+		if (object->bones.find(nodeName) != object->bones.end())
 		{
-			int boneIndex = object->boneInfoMap[nodeName].id;
-			instance->boneTransforms[boneIndex] = globalTransform * object->boneInfoMap[nodeName].offset;
+			int boneIndex = object->bones[nodeName].id;
+			instance->boneTransforms[boneIndex] = globalTransform * object->bones[nodeName].offset;
 		}
 
-		for (int i = 0; i < node->mNumChildren; i++)
+		for (int i = 0; i < sceneNode.children.size(); i++)
 		{
-			CalculateBoneTransform(object, instance, node->mChildren[i], globalTransform);
+			UpdateBoneTransforms(object, instance, sceneNode.children[i], globalTransform);
 		}
 	}
 
@@ -688,7 +627,6 @@ public:
 	{
 		for (auto& object : objects)
 		{
-
 			for (auto& instance : object.instances)
 			{
 				if (instance.currentAnimation == -1)
@@ -696,16 +634,12 @@ public:
 					continue;
 				}
 
-				const aiAnimation* animation = object.objectAsset->mAnimations[instance.currentAnimation];
+				instance.currentAnimationTime += object.animations[instance.currentAnimation].ticksPerSecond * deltaTime;
 
-				instance.currentAnimationTime += animation->mTicksPerSecond * deltaTime;
+				instance.currentAnimationTime = fmod(instance.currentAnimationTime, object.animations[instance.currentAnimation].duration);
 
-				instance.currentAnimationTime = fmod(instance.currentAnimationTime, animation->mDuration);
-
-				CalculateBoneTransform(&object, &instance, object.objectAsset->mRootNode, glm::mat4(1.0f));
+				UpdateBoneTransforms(&object, &instance, object.sceneRoot, glm::mat4(1.0f));
 			}
 		}
 	}
-
-
 };

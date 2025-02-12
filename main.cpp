@@ -5,7 +5,7 @@
 
 int main() 
 {
-    TextureCompressor::CompressTextures("rawtextures", "textures");
+    //TextureCompressor::CompressTextures("rawtextures", "textures");
 
     UEngine Engine;
     Engine.Run();
