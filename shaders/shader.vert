@@ -15,15 +15,20 @@ struct Vertex {
     float uv_y;
     vec3 color;
     int diffuseTextureID;
-    vec4 boneIDs;
-    vec4 boneWeights;
+    ivec4 boneIndices;
+	vec4 boneWeights;
+    mat4 globalTransform;
 };
 
-struct ObjectInstance
+struct EntityInstance
 {
 	mat4 model;
-    mat4 boneTransforms[100];
-    int currentAnimation;
+    int boneTransformBufferIndex;
+};
+
+struct BoneTransformData
+{
+    mat4 boneTransforms[200];
 };
 
 struct SceneData
@@ -39,8 +44,12 @@ layout(binding = 0, std430) readonly buffer VertexBuffer{
 	Vertex vertices[];
 };
 
-layout(binding = 3, std430) readonly buffer ObjectInstanceBuffer{
-     ObjectInstance objectInstances[];
+layout(binding = 3, std430) readonly buffer EntityInstanceBuffer{
+     EntityInstance entityInstances[];
+};
+
+layout(binding = 4, std430) readonly buffer BoneTransformBuffer{
+     BoneTransformData boneTransforms[];
 };
 
 layout(binding = 2) uniform SceneDataUniformBuffer{
@@ -51,10 +60,10 @@ void main() {
 
     Vertex v = vertices[gl_VertexIndex];
 
-    vec4 totalPosition = vec4(0.0f);
+    vec4 totalPosition = vec4(0,0,0,0);
     vec3 skinnedNormal = vec3(0.0);
 
-    if(objectInstances[gl_InstanceIndex].currentAnimation < 0)
+    if(entityInstances[gl_InstanceIndex].boneTransformBufferIndex == -1)
 	{
 		totalPosition = vec4(v.position, 1.0f);
         skinnedNormal = v.normal;
@@ -63,33 +72,34 @@ void main() {
     {
         for(int i = 0 ; i < 4 ; i++)
         {
-            if(v.boneIDs[i] == -1) 
-                continue;
-
-            if(v.boneIDs[i] >= 100) 
+            if(v.boneIndices[i] == -1 || v.boneWeights[i] == 0.0f)
             {
-                totalPosition = vec4(v.position, 1.0f);
-                break;
+                continue;
             }
 
+            mat4 boneTransform = boneTransforms[entityInstances[gl_InstanceIndex].boneTransformBufferIndex].boneTransforms[v.boneIndices[i]];
            
-            vec4 localPosition = objectInstances[gl_InstanceIndex].boneTransforms[int(v.boneIDs[i])] * vec4(v.position, 1.0f);
+            vec4 localPosition = boneTransform * vec4(v.position, 1.0f);
             totalPosition += localPosition * v.boneWeights[i];
 
-            mat3 boneMatrix3x3 = mat3(objectInstances[gl_InstanceIndex].boneTransforms[int(v.boneIDs[i])]);
+            mat3 boneMatrix3x3 = mat3(boneTransform);
             vec3 localNormal = boneMatrix3x3 * v.normal;
             skinnedNormal += localNormal * v.boneWeights[i];
         }
     }
 
-    gl_Position = sceneData.projection * sceneData.view * objectInstances[gl_InstanceIndex].model * totalPosition;
+     if(totalPosition.w == 0.0) {
+        totalPosition.w = 1.0;
+    }
+
+    gl_Position = sceneData.projection * sceneData.view * entityInstances[gl_InstanceIndex].model * totalPosition;
     outUV.x = v.uv_x;
 	outUV.y = v.uv_y;
     fragColor = v.color;
     outDiffuseTextureID = v.diffuseTextureID;
-    outNormal = transpose(inverse(mat3(objectInstances[gl_InstanceIndex].model))) * skinnedNormal;
-    fragPos = vec3(objectInstances[gl_InstanceIndex].model * totalPosition);
+    outNormal = transpose(inverse(mat3(entityInstances[gl_InstanceIndex].model))) * skinnedNormal;
+    fragPos = vec3(entityInstances[gl_InstanceIndex].model * totalPosition);
     lightPos = vec3(sceneData.lightPos);
     fragPosLightSpace = sceneData.lightSpaceMatrix * vec4(fragPos, 1.0);
 
-}
+} 

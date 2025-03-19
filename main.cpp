@@ -1,14 +1,12 @@
+//#include "Physics.h"
+#define SDL_MAIN_HANDLED
 #include "Engine.h"
 
-#include "TextureCompressor.h"
-
-
-int main() 
+int main()
 {
-    //TextureCompressor::CompressTextures("rawtextures", "textures");
+	UEngine Engine;
 
-    UEngine Engine;
-    Engine.Run();
+	Engine.Run();
 
-    return 0;
+	return 0;
 }
