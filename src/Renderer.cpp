@@ -15,8 +15,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-#include "SceneTypes.h"
-#include "ECS.h"
+#include "SceneManager.h"
 
 #include <chrono>
 
@@ -1967,11 +1966,11 @@ void URenderer::RecordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imag
 
     std::map<std::string, std::vector<EntityInstance>> modelInstanceMap;
 
-    ECS::Get().UpdatePhysicsActors();
+    SceneManager::Get().UpdatePhysicsActors();
 
-	ECS::Get().UpdateAnimationSystem(boneTransformData, deltaTime);
+	SceneManager::Get().UpdateAnimationSystem(boneTransformData, deltaTime);
 
-	ECS::Get().UpdateEntityInstances(entityInstance, modelInstanceMap);
+	SceneManager::Get().UpdateEntityInstances(entityInstance, modelInstanceMap);
 
     OneTimeSubmit([&](VkCommandBuffer cmd) {
         VkBufferCopy copyEntityInstances{};

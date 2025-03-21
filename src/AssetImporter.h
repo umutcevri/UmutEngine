@@ -24,15 +24,15 @@ public:
 		return instance;
 	}
 
-	void LoadModelFromFile(const char* path, Model &model, std::vector<Vertex> &vertices, std::vector<uint32_t> &indices);
+	void LoadModelFromFile(const char* path, Model &model, std::vector<Vertex> &vertices, std::vector<uint32_t> &indices, std::vector<std::string>& texturePaths);
 
 	void LoadAnimatonToModel(const char* path, Model& model);
 
 	void LoadAnimation(const aiScene* scene, Model& model);
 
-	void ProcessNode(aiNode* node, const aiScene* scene, Model& model, SceneNode &sceneNode, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, glm::mat4 parentTransform = glm::mat4(1.0f));
+	void ProcessNode(aiNode* node, const aiScene* scene, Model& model, SceneNode &sceneNode, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, std::vector<std::string>& texturePaths, glm::mat4 parentTransform = glm::mat4(1.0f));
 
-	void ProcessMesh(Mesh &mesh, aiMesh* assimpMesh, const aiScene* scene, Model& model, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices);
+	void ProcessMesh(Mesh &mesh, aiMesh* assimpMesh, const aiScene* scene, Model& model, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, std::vector<std::string>& texturePaths, glm::mat4 globalTransform);
 
 	void ExtractBoneWeights(std::vector<Vertex>& meshVertices, aiMesh* assimpMesh, Model& model);
 

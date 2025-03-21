@@ -4,9 +4,56 @@
 
 #include <iostream>
 
+#include <fstream>
+
+#include "json.hpp"
+
+using json = nlohmann::json;
+
+void SceneManager::LoadScene(const std::string& path)
+{
+	std::ifstream file(path);
+	json scene;
+	file >> scene;
+
+	// Load assets
+	for (auto& model : scene["assets"]["models"]) {
+		SceneManager::Get().LoadModelFromFile(model["file"], model["id"]);
+	}
+	for (auto& animation : scene["assets"]["animations"]) {
+		SceneManager::Get().LoadAnimationToModel(animation["file"], animation["modelId"]);
+	}
+
+	// Create entities
+	for (auto& entityData : scene["entities"]) {
+		entt::entity entity = registry.create();
+		auto& components = entityData["components"];
+
+		// Add TransformComponent
+		auto transform = components["TransformComponent"];
+		registry.emplace<TransformComponent>(
+			entity,
+			TransformComponent{
+				glm::vec3(transform["position"][0], transform["position"][1], transform["position"][2]),
+				glm::vec3(transform["rotation"][0], transform["rotation"][1], transform["rotation"][2]),
+				glm::vec3(transform["scale"][0], transform["scale"][1], transform["scale"][2])
+			}
+		);
+
+		// Add ModelComponent
+		auto modelComponent = components["ModelComponent"];
+		registry.emplace<ModelComponent>(entity, ModelComponent{ modelComponent["modelId"] });
+
+		// Optionally add AnimationComponent if present
+		if (components.contains("AnimationComponent")) {
+			registry.emplace<AnimationComponent>(entity, AnimationComponent{});
+		}
+	}
+}
+
 void SceneManager::LoadModelFromFile(const std::string& path, const std::string& modelName)
 {
-	AssetImporter::Get().LoadModelFromFile(path.c_str(), models[modelName], vertices, indices);
+	AssetImporter::Get().LoadModelFromFile(path.c_str(), models[modelName], vertices, indices, texturePaths);
 }
 
 void SceneManager::LoadAnimationToModel(const std::string& path, const std::string& modelName)
@@ -104,5 +151,82 @@ glm::mat4 SceneManager::GetAnimationRotationMatrix(std::vector<RotationKey>& key
 glm::mat4 SceneManager::GetBoneTransform(AnimationChannel& channel, double currentTime)
 {
 	return GetAnimationPositionMatrix(channel.positionKeys, currentTime) * GetAnimationRotationMatrix(channel.rotationKeys, currentTime) * GetAnimationScalingMatrix(channel.scalingKeys, currentTime);
+}
+
+void SceneManager::UpdateEntityInstances(EntityInstance* entityInstanceBuffer, std::map<std::string, std::vector<EntityInstance>>& modelInstanceMap)
+{
+	entt::basic_view view = registry.view<ModelComponent, TransformComponent>();
+
+	for (entt::entity entity : view) {
+		const ModelComponent& modelComp = view.get<ModelComponent>(entity);
+		const TransformComponent& transformComp = view.get<TransformComponent>(entity);
+
+		glm::mat4 model = glm::mat4(1.0f);
+		model = glm::translate(model, transformComp.position);
+		model = glm::rotate(model, glm::radians(transformComp.rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
+		model = glm::rotate(model, glm::radians(transformComp.rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
+		model = glm::rotate(model, glm::radians(transformComp.rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
+		model = glm::scale(model, transformComp.scale);
+
+		EntityInstance data{};
+		data.model = model;
+		data.boneTransformBufferIndex = modelComp.boneTransformBufferIndex;
+
+		modelInstanceMap[modelComp.modelName].push_back(data);
+	}
+
+	uint32_t instanceIndex = 0;
+
+	for (const auto& pair : modelInstanceMap)
+	{
+		if (pair.second.size() == 0)
+		{
+			continue;
+		}
+
+		for (size_t i = 0; i < pair.second.size(); i++)
+		{
+			entityInstanceBuffer[instanceIndex] = pair.second[i];
+			instanceIndex++;
+		}
+	}
+}
+
+void SceneManager::UpdatePhysicsActors()
+{
+	entt::basic_view view = registry.view<TransformComponent, PhysicsRigidBodyComponent>();
+
+	for (entt::entity entity : view)
+	{
+		TransformComponent& transformComp = view.get<TransformComponent>(entity);
+		const PhysicsRigidBodyComponent& physicsComp = view.get<PhysicsRigidBodyComponent>(entity);
+
+		PxTransform transform = physicsComp.actor->getGlobalPose();
+
+		transformComp.position = glm::vec3(transform.p.x, transform.p.y, transform.p.z);
+
+		transformComp.rotation = glm::eulerAngles(glm::quat(transform.q.w, transform.q.x, transform.q.y, transform.q.z));
+	}
+}
+
+void SceneManager::UpdateAnimationSystem(BoneTransformData* boneTransforms, float deltaTime)
+{
+	int boneTransformBufferIndex = 0;
+
+	entt::basic_view view = registry.view<ModelComponent, AnimationComponent>();
+	for (entt::entity entity : view)
+	{
+		ModelComponent& modelComp = view.get<ModelComponent>(entity);
+		AnimationComponent& animComp = view.get<AnimationComponent>(entity);
+
+		Model& model = SceneManager::Get().models[modelComp.modelName];
+		Animation& anim = model.animations[animComp.currentAnimationIndex];
+
+		modelComp.boneTransformBufferIndex = boneTransformBufferIndex;
+
+		SceneManager::Get().UpdateAnimations(model, anim, boneTransforms[boneTransformBufferIndex], deltaTime);
+
+		boneTransformBufferIndex++;
+	}
 }
 

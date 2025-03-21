@@ -16,6 +16,9 @@
     <Filter Include="Shaders">
       <UniqueIdentifier>{58b6fad6-6936-4e94-a284-fe46f3bfd71f}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Scenes">
+      <UniqueIdentifier>{becb7bb4-9d7d-47fb-9d2a-cc2fc45855e7}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -45,9 +48,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\CommonTypes.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ECS.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\Engine.h">
@@ -90,6 +90,9 @@
     </None>
     <None Include="shaders\shadow.vert">
       <Filter>Shaders</Filter>
+    </None>
+    <None Include="scenes\Scene1.json">
+      <Filter>Scenes</Filter>
     </None>
   </ItemGroup>
 </Project>

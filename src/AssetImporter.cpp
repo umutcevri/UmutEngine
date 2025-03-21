@@ -5,7 +5,7 @@
 #include <iostream>
 
 
-void AssetImporter::LoadModelFromFile(const char* path, Model& model, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices)
+void AssetImporter::LoadModelFromFile(const char* path, Model& model, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, std::vector<std::string>& texturePaths)
 {
 	const aiScene* scene = importer.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenSmoothNormals);
 
@@ -15,7 +15,7 @@ void AssetImporter::LoadModelFromFile(const char* path, Model& model, std::vecto
 		return;
 	}
 
-	ProcessNode(scene->mRootNode, scene, model, model.sceneRoot, vertices, indices);
+	ProcessNode(scene->mRootNode, scene, model, model.sceneRoot, vertices, indices, texturePaths);
 
 	LoadAnimation(scene, model);
 }
@@ -76,7 +76,7 @@ void AssetImporter::LoadAnimation(const aiScene* scene, Model& model)
 	}
 }
 
-void AssetImporter::ProcessNode(aiNode* node, const aiScene* scene, Model& model, SceneNode& sceneNode, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, glm::mat4 parentTransform)
+void AssetImporter::ProcessNode(aiNode* node, const aiScene* scene, Model& model, SceneNode& sceneNode, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, std::vector<std::string>& texturePaths, glm::mat4 parentTransform)
 {
 	sceneNode.localTransform = aiMatrix4x4ToGlm(node->mTransformation);
 
@@ -90,18 +90,18 @@ void AssetImporter::ProcessNode(aiNode* node, const aiScene* scene, Model& model
 
 		model.meshes.resize(model.meshes.size() + 1);
 
-		ProcessMesh(model.meshes.back(), mesh, scene, model, vertices, indices);
+		ProcessMesh(model.meshes.back(), mesh, scene, model, vertices, indices, texturePaths, globalTransform);
 	}
 
 	sceneNode.children.resize(node->mNumChildren);
 
 	for (unsigned int i = 0; i < node->mNumChildren; i++)
 	{
-		ProcessNode(node->mChildren[i], scene, model, sceneNode.children[i], vertices, indices, globalTransform);
+		ProcessNode(node->mChildren[i], scene, model, sceneNode.children[i], vertices, indices, texturePaths, globalTransform);
 	}
 }
 
-void AssetImporter::ProcessMesh(Mesh& mesh, aiMesh* assimpMesh, const aiScene* scene, Model& model, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices)
+void AssetImporter::ProcessMesh(Mesh& mesh, aiMesh* assimpMesh, const aiScene* scene, Model& model, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, std::vector<std::string>& texturePaths, glm::mat4 globalTransform)
 {
 	uint32_t startIndex = static_cast<uint32_t>(indices.size());
 
@@ -124,6 +124,35 @@ void AssetImporter::ProcessMesh(Mesh& mesh, aiMesh* assimpMesh, const aiScene* s
 	aiColor3D color(0.f, 0.f, 0.f);
 	material->Get(AI_MATKEY_COLOR_DIFFUSE, color);
 
+	int diffuseTextureID = -1;
+
+	if (material->GetTextureCount(aiTextureType_DIFFUSE) > 0)
+	{
+		aiString _texturePath;
+
+		material->GetTexture(aiTextureType_DIFFUSE, 0, &_texturePath);
+
+		std::string texturePath = _texturePath.C_Str();
+
+		//append textures/ to the beginning of the texture path
+
+		texturePath = "textures/" + texturePath;
+
+		auto it = std::find(texturePaths.begin(), texturePaths.end(), texturePath);
+
+		if (it != texturePaths.end())
+		{
+			diffuseTextureID = std::distance(texturePaths.begin(), it);
+		}
+		else
+		{
+			texturePaths.push_back(texturePath);
+
+			diffuseTextureID = static_cast<int>(texturePaths.size()) - 1;
+		}
+	}
+
+
 	std::vector<Vertex> meshVertices;
 
 	meshVertices.resize(assimpMesh->mNumVertices);
@@ -134,7 +163,12 @@ void AssetImporter::ProcessMesh(Mesh& mesh, aiMesh* assimpMesh, const aiScene* s
 
 		Vertex& vertex = meshVertices[i];
 
-		vertex.position = glm::vec3(vertexPos.x, vertexPos.y, vertexPos.z);
+		glm::vec3 position = glm::vec3(vertexPos.x, vertexPos.y, vertexPos.z);
+
+		glm::vec4 transformedVertexPos = globalTransform * glm::vec4(position, 1.0f);
+
+		vertex.position = position;
+
 		vertex.normal = glm::vec3(assimpMesh->mNormals[i].x, assimpMesh->mNormals[i].y, assimpMesh->mNormals[i].z);
 
 		if (assimpMesh->HasTextureCoords(0))
@@ -148,7 +182,7 @@ void AssetImporter::ProcessMesh(Mesh& mesh, aiMesh* assimpMesh, const aiScene* s
 			vertex.uv_y = 0.0f;
 		}
 
-		vertex.diffuseTextureID = -1;
+		vertex.diffuseTextureID = diffuseTextureID;
 
 		vertex.color = glm::vec3(color.r, color.g, color.b);
 	}

@@ -6,8 +6,6 @@
 
 #include "InputManager.h"
 
-#include "ECS.h"
-
 #include "SceneManager.h"
 
 #include <iostream>
@@ -115,28 +113,7 @@ private:
 
 	void LoadAssets()
 	{
-		SceneManager::Get().LoadModelFromFile("assets/cube.fbx", "cube");
-
-		SceneManager::Get().LoadModelFromFile("assets/ElfArden.fbx", "floor");
-
-		SceneManager::Get().LoadAnimationToModel("assets/AS_run.fbx", "floor");
-
-		
-		entt::entity cube = ECS::Get().registry.create();
-
-		ECS::Get().registry.emplace<TransformComponent>(cube, TransformComponent{ glm::vec3(0,2,0), glm::vec3(0,0,0), glm::vec3(0.01) });
-
-		ECS::Get().registry.emplace<ModelComponent>(cube, ModelComponent{ "floor" });
-
-		ECS::Get().registry.emplace<AnimationComponent>(cube, AnimationComponent{ 0 });
-		
-		
-		entt::entity floor = ECS::Get().registry.create();
-
-		ECS::Get().registry.emplace<TransformComponent>(floor, TransformComponent{ glm::vec3(0,-1,0), glm::vec3(0,0,0), glm::vec3(10,1,10) });
-
-		ECS::Get().registry.emplace<ModelComponent>(floor, ModelComponent{ "cube" });
-		
+		SceneManager::Get().LoadScene("scenes/Scene1.json");
 
 		SceneManager::Get().texturePaths.push_back("assets/image.jpg");
 
