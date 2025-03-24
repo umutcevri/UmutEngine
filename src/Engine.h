@@ -4,6 +4,8 @@
 
 #include "FreeCamera.h"
 
+#include "ThirdPersonCamera.h"
+
 #include "InputManager.h"
 
 #include "SceneManager.h"
@@ -12,13 +14,11 @@
 
 class UEngine
 {
-	VkExtent2D windowExtent{ 1280 , 720 };
+	VkExtent2D windowExtent{ 1920 , 1080 };
 	SDL_Window* window;
 	SDL_Event e;
 
 	URenderer renderer;
-
-	FreeCamera* freeCamera;
 
 	bool bQuit = false;
 
@@ -32,15 +32,11 @@ public:
 
 		renderer.SetWindow(window);
 
-		freeCamera = new FreeCamera(glm::vec3(0,0,0));
-
-		renderer.SetCamera(freeCamera);
-
 		LoadAssets();
 
 		renderer.Init();
 
-		lastFrame = (float)SDL_GetTicks64() / 1000.0f;
+		lastFrame = static_cast<float>(SDL_GetTicks64()) / 1000.0f;
 
 		while (!bQuit)
 		{
@@ -72,8 +68,12 @@ private:
 
 	void MainLoop()
 	{
-		float currentFrame = (float)SDL_GetTicks64() / 1000.0f;
+		float currentFrame = static_cast<float>(SDL_GetTicks64()) / 1000.0f;
 		deltaTime = currentFrame - lastFrame;
+
+		if (deltaTime <= 0)
+			deltaTime = 0.001f;
+
 		lastFrame = currentFrame;
 
 		InputManager::Get().Update();
@@ -100,13 +100,15 @@ private:
 				{
 					renderer.renderDebugQuad = !renderer.renderDebugQuad;
 				}
+				else if (e.key.keysym.sym == SDLK_n)
+				{
+					renderer.cameraIndex += 1;
+				}
 			}
 
 		}
 
 		UPhysics::Get().Update(deltaTime);
-
-		freeCamera->Update(deltaTime);
 
 		renderer.Draw(deltaTime);
 	}

@@ -10,6 +10,8 @@ public:
 	glm::vec2 moveInput;
 	glm::vec2 lookInput;
 
+	bool jump = false;
+
 	static InputManager& Get()
 	{
 		static InputManager instance;
@@ -22,4 +24,7 @@ private:
 	void KeyboardInput();
 
 	void MouseInput();
+
+	Uint8 previousKeyStates[SDL_NUM_SCANCODES] = { 0 };
+
 };

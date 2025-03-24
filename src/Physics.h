@@ -29,6 +29,8 @@ public:
 
 	PxRigidActor* CreatePxRigidStaticActor(const PxTransform& t, const PxGeometry& geometry);
 
+	PxController* CreateCharacterController(PxExtendedVec3 pos);
+
 	void Update(float deltaTime)
 	{
 		gScene->simulate(deltaTime);

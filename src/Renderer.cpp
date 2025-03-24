@@ -4,7 +4,7 @@
 
 #include "CommonTypes.h"
 
-#include "Camera.h"
+#include "FreeCamera.h"
 
 #include <iostream>
 #include <array>
@@ -70,6 +70,10 @@ void URenderer::Init() {
     CreateCommandBuffer();
 
     CreateSyncPrimitives();
+
+	//create default camera
+
+	defaultCamera = new FreeCamera();
 }
 
 void URenderer::SetWindow(SDL_Window* window)
@@ -157,11 +161,6 @@ void URenderer::Cleanup() {
     vkb::destroy_swapchain(vkb_swapchain);
 
     deletionQueue.flush();
-}
-
-void URenderer::SetCamera(Camera* cam)
-{
-    camera = cam;
 }
 
 void URenderer::InitVulkan() {
@@ -1966,11 +1965,15 @@ void URenderer::RecordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imag
 
     std::map<std::string, std::vector<EntityInstance>> modelInstanceMap;
 
-    SceneManager::Get().UpdatePhysicsActors();
+    SceneManager::Get().UpdatePhysicsActors(deltaTime);
 
 	SceneManager::Get().UpdateAnimationSystem(boneTransformData, deltaTime);
 
 	SceneManager::Get().UpdateEntityInstances(entityInstance, modelInstanceMap);
+
+    std::vector<Camera*> cameras;
+
+	SceneManager::Get().UpdateCameraSystem(deltaTime, cameras);
 
     OneTimeSubmit([&](VkCommandBuffer cmd) {
         VkBufferCopy copyEntityInstances{};
@@ -1986,10 +1989,22 @@ void URenderer::RecordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imag
         vkCmdCopyBuffer(cmd, boneTransformStaging.buffer, boneTransformBuffer.buffer, 1, &copyBoneTransforms);
         });
 
-    glm::vec3 lightPos(-2.0f, 4.0f, -1.0f);
+    Camera* camera = defaultCamera;
 
-    float near_plane = 1.0f, far_plane = 10.f;
-    glm::mat4 lightProjection = glm::ortho(-5.0f, 5.0f, -5.0f, 5.0f, far_plane, near_plane);
+    if (cameras.size() > 0)
+    {
+        if (cameraIndex >= cameras.size())
+        {
+            cameraIndex = 0;
+        }
+
+        camera = cameras[cameraIndex];
+    }
+
+    glm::vec3 lightPos(-20.0f, 40.0f, -10.0f);
+
+    float near_plane = 1.0f, far_plane = 100.f;
+    glm::mat4 lightProjection = glm::ortho(-100.0f, 100.0f, -100.0f, 100.0f, far_plane, near_plane);
 
     lightProjection[1][1] *= -1;
 
@@ -2114,6 +2129,8 @@ void URenderer::RecordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imag
         glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 100.0f);
 
         projection[1][1] *= -1;
+
+        
 
         glm::mat4 view = camera->GetViewMatrix();
 

@@ -45,6 +45,25 @@ PxRigidActor* UPhysics::CreatePxRigidStaticActor(const PxTransform& t, const PxG
 	return actor;
 }
 
+PxController* UPhysics::CreateCharacterController(PxExtendedVec3 pos)
+{
+	PxCapsuleControllerDesc desc;
+
+	desc.height = 1.5f;
+	desc.radius = 0.25f;
+	desc.position = pos + PxExtendedVec3(0,1,0);
+	desc.contactOffset = 0.1f;
+	desc.stepOffset = 0.5f;
+	desc.slopeLimit = cosf(PxPi / 4); // 45 degrees
+	desc.material = gPhysics->createMaterial(
+    0.5f, // static friction
+    0.5f, // dynamic friction
+    0.5f  // restitution
+	);
+
+	return manager->createController(desc);
+}
+
 
 
 

@@ -24,8 +24,6 @@ const int MAX_ANIMATED_ENTITIES = 100;
 
 const int MAX_FRAMES = 2;
 
-
-class Camera;
 struct SDL_Window;
 
 class URenderer {
@@ -176,7 +174,7 @@ private:
 
     std::vector<VkImageView> images;
 
-    uint32_t shadowMapResolution = 4096;
+    uint32_t shadowMapResolution = 16384;
 
     VkSampler shadowSampler;
 
@@ -206,8 +204,6 @@ private:
 
     SDL_Window* _window;
 
-    Camera* camera;
-
     AllocatedBuffer entityInstanceStaging;
 
 	AllocatedBuffer boneTransformStaging;
@@ -218,8 +214,12 @@ private:
 
 	float deltaTime = 0.0f;
 
+	class Camera* defaultCamera;
+
 public:
     bool renderDebugQuad = false;
+
+	int cameraIndex = 0;
 
     void Init();
 
@@ -229,9 +229,8 @@ public:
 
     void SetWindow(SDL_Window* window);
 
-	void SetCamera(Camera* camera);
-
 private:
+
     void InitVulkan();
 
     void OneTimeSubmit(std::function<void(VkCommandBuffer cmd)>&& function);

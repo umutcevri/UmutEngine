@@ -94,5 +94,8 @@
     <None Include="scenes\Scene1.json">
       <Filter>Scenes</Filter>
     </None>
+    <None Include="assets\animcontrollers\PlayerAnimController.json">
+      <Filter>Resource Files</Filter>
+    </None>
   </ItemGroup>
 </Project>

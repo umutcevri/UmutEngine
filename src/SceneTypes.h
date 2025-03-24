@@ -66,7 +66,8 @@ struct Model
 {
 	std::vector<Mesh> meshes;
 
-	std::vector<Animation> animations;
+	//animation name to animation map
+	std::unordered_map<std::string, Animation> animations;
 
 	//bone name to bone map
 	std::unordered_map<std::string, Bone> boneMap;

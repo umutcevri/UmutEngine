@@ -12,6 +12,9 @@ void InputManager::KeyboardInput()
 
 	moveInput = glm::vec2(0);
 
+	//press once
+	jump = keystate[SDL_SCANCODE_SPACE] && !previousKeyStates[SDL_SCANCODE_SPACE];
+
 	// adjust accordingly
 	if (keystate[SDL_SCANCODE_W])
 		moveInput.y += 1;
@@ -21,6 +24,8 @@ void InputManager::KeyboardInput()
 		moveInput.x -= 1;
 	if (keystate[SDL_SCANCODE_D])
 		moveInput.x += 1;
+
+	memcpy(previousKeyStates, keystate, SDL_NUM_SCANCODES);
 }
 
 void InputManager::MouseInput()

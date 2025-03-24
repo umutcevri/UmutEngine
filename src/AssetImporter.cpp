@@ -40,6 +40,8 @@ void AssetImporter::LoadAnimation(const aiScene* scene, Model& model)
 		for (int i = 0; i < scene->mNumAnimations; i++)
 		{
 			aiAnimation* animation = scene->mAnimations[i];
+			std::string animationName = animation->mName.C_Str();
+			std::cout << "Animation Name: " << animationName << std::endl;
 			Animation anim;
 			anim.duration = animation->mDuration;
 			anim.ticksPerSecond = animation->mTicksPerSecond;
@@ -71,7 +73,7 @@ void AssetImporter::LoadAnimation(const aiScene* scene, Model& model)
 				}
 				anim.channels[animChannel.nodeName] = animChannel;
 			}
-			model.animations.push_back(anim);
+			model.animations[animationName] = anim;
 		}
 	}
 }
