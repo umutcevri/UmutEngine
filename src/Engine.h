@@ -14,7 +14,7 @@
 
 class UEngine
 {
-	VkExtent2D windowExtent{ 1920 , 1080 };
+	VkExtent2D windowExtent{ 1280 , 720 };
 	SDL_Window* window;
 	SDL_Event e;
 
@@ -103,6 +103,15 @@ private:
 				else if (e.key.keysym.sym == SDLK_n)
 				{
 					renderer.cameraIndex += 1;
+				}
+				else if (e.key.keysym.sym == SDLK_b)
+				{
+					renderer.debugQuadTextureIndex += 1;
+
+					if (renderer.debugQuadTextureIndex >= NUM_CASCADES)
+						renderer.debugQuadTextureIndex = 0;
+
+					std::cout << renderer.debugQuadTextureIndex << std::endl;
 				}
 			}
 

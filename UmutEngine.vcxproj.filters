@@ -97,5 +97,8 @@
     <None Include="assets\animcontrollers\PlayerAnimController.json">
       <Filter>Resource Files</Filter>
     </None>
+    <None Include="README.md">
+      <Filter>Resource Files</Filter>
+    </None>
   </ItemGroup>
 </Project>

@@ -3,6 +3,7 @@
 #include <vector>
 #include <deque>
 #include <functional>
+#include <array>
 
 #include "vulkan/vulkan.h"
 
@@ -23,6 +24,8 @@ const int MAX_ENTITIES = 1000;
 const int MAX_ANIMATED_ENTITIES = 100;
 
 const int MAX_FRAMES = 2;
+
+const int NUM_CASCADES = 3;
 
 struct SDL_Window;
 
@@ -88,9 +91,18 @@ private:
         glm::mat4 lightSpaceMatrix;
     };
 
+	struct DebugQuadPushConstants
+	{
+		int textureIndex;
+	};
+
+	struct ShadowPushConstants
+	{
+		glm::mat4 lightSpaceMatrix;
+	};
+
     struct ShadowData
     {
-        glm::mat4 lightSpaceMatrix;
         glm::mat4 model;
     };
 
@@ -99,9 +111,22 @@ private:
         glm::mat4 projection;
         glm::mat4 view;
         glm::mat4 model;
-        glm::mat4 lightSpaceMatrix;
         glm::vec4 lightPos;
     };
+
+    struct Cascade
+    {
+        glm::mat4 viewProjMatrix;
+        float splitDepth;
+		int padding[3];
+    };
+
+    struct CascadeData
+    {
+		Cascade cascades[NUM_CASCADES];
+    };
+
+    std::array<Cascade, NUM_CASCADES> cascades;
 
     DeletionQueue deletionQueue;
 
@@ -174,11 +199,11 @@ private:
 
     std::vector<VkImageView> images;
 
-    uint32_t shadowMapResolution = 16384;
+    uint32_t shadowMapResolution = 4096;
 
     VkSampler shadowSampler;
 
-    VkFramebuffer shadowFramebuffer;
+    VkFramebuffer shadowFramebuffers[NUM_CASCADES];
 
     VkPipeline shadowPipeline;
 
@@ -192,15 +217,15 @@ private:
 
     VkDescriptorSetLayout debugQuadDescriptorSetLayout;
 
-    VkImage shadowImage;
+    VkImage shadowImages[NUM_CASCADES];
 
-    VkImageView shadowImageView;
+    VkImageView shadowImageViews[NUM_CASCADES];
 
     AllocatedBuffer shadowUniformBuffer;
 
     AllocatedBuffer sceneDataUniformBuffer;
 
-    VkDescriptorPool shadowDescriptorPool;
+	AllocatedBuffer cascadeDataBuffer;
 
     SDL_Window* _window;
 
@@ -216,8 +241,14 @@ private:
 
 	class Camera* defaultCamera;
 
+	class Camera* camera;
+
+    glm::vec3 sunPos = glm::vec3(-2.0f, 4.0f, -1.0f);
+
 public:
     bool renderDebugQuad = false;
+
+	int debugQuadTextureIndex = 0;
 
 	int cameraIndex = 0;
 
@@ -273,15 +304,15 @@ private:
 
     void CreateFrameBuffers();
 
-    void CreateShadowFrameBuffer();
+    void CreateShadowFrameBuffer(VkFramebuffer &shadowFramebuffer, VkImage &shadowImage, VkImageView &shadowImageView);
+
+	void CreateShadowSampler();
 
     void RecreateSwapChain();
 
     void CreateCommandPool();
 
     void CreateDescriptorPool();
-
-    void CreateShadowDescriptorPool();
 
     void CreateDescriptorSets();
 
@@ -298,4 +329,6 @@ private:
     std::vector<uint32_t> CompileGLSLtoSPV(const std::string& sourceCode, EShLanguage shaderType);
 
     VkShaderModule CreateShaderModule(const std::vector<uint32_t>& spirvCode);
+
+    void UpdateCascades();
 };

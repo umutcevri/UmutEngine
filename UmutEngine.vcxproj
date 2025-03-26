@@ -156,6 +156,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="assets\animcontrollers\PlayerAnimController.json" />
+    <None Include="README.md" />
     <None Include="scenes\Scene1.json" />
     <None Include="shaders\debugQuad.frag" />
     <None Include="shaders\debugQuad.vert" />

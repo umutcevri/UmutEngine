@@ -1,5 +1,7 @@
 #include "InputManager.h"
 
+#include <iostream>
+
 void InputManager::Update()
 {
 	KeyboardInput();

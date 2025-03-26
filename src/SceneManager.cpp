@@ -346,17 +346,10 @@ void SceneManager::UpdatePhysicsActors(float deltaTime)
 		// Check if the controller is grounded
 		bool isGrounded = (state.collisionFlags & PxControllerCollisionFlag::eCOLLISION_DOWN) != 0;
 
-
-		//jumping
-
 		if (isGrounded)
 		{
-			controllerComp.verticalVelocity = -1;
-
 			if (InputManager::Get().jump)
 			{
-				std::cout << "jump" << std::endl;
-
 				controllerComp.verticalVelocity = controllerComp.jumpStrength;
 				SetAnimationParameter(entity, "jump", 1.0f);
 				SetAnimationParameter(entity, "isGrounded", 0.0f);
@@ -371,9 +364,9 @@ void SceneManager::UpdatePhysicsActors(float deltaTime)
 		{
 			SetAnimationParameter(entity, "jump", 0.0f);
 			SetAnimationParameter(entity, "isGrounded", 0.0f);
-
-			controllerComp.verticalVelocity -= controllerComp.gravity * deltaTime;
 		}
+
+		controllerComp.verticalVelocity -= controllerComp.gravity * deltaTime;
 
 		if (controllerComp.verticalVelocity < -controllerComp.terminalVelocity)
 		{

@@ -25,7 +25,6 @@ struct BoneTransformData
 
 struct ShadowData
 {
-    mat4 lightSpaceMatrix;
     mat4 model;
 };
 
@@ -37,13 +36,17 @@ layout(binding = 1) uniform ShadowBuffer{
 	ShadowData shadowData;
 };
 
-layout(binding = 3, std430) readonly buffer EntityInstanceBuffer{
+layout(binding = 2, std430) readonly buffer EntityInstanceBuffer{
      EntityInstance entityInstances[];
 };
 
-layout(binding = 4, std430) readonly buffer BoneTransformBuffer{
+layout(binding = 3, std430) readonly buffer BoneTransformBuffer{
      BoneTransformData boneTransforms[];
 };
+
+layout(push_constant) uniform PushConstant{
+    mat4 lightSpaceMatrix;
+} pc;
 
 void main() {
     Vertex v = vertices[gl_VertexIndex];
@@ -74,6 +77,6 @@ void main() {
         totalPosition.w = 1.0;
     }
 
-    gl_Position = shadowData.lightSpaceMatrix * entityInstances[gl_InstanceIndex].model * v.globalTransform * totalPosition;
+    gl_Position = pc.lightSpaceMatrix * entityInstances[gl_InstanceIndex].model * v.globalTransform * totalPosition;
 }
 

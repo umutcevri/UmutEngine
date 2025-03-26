@@ -6,7 +6,7 @@ layout (location = 2) flat out int outDiffuseTextureID;
 layout (location = 3) out vec3 outNormal;
 layout (location = 4) out vec3 fragPos;
 layout (location = 5) out vec3 lightPos;
-layout (location = 6) out vec4 fragPosLightSpace;
+layout (location = 6) out mat4 outView;
 
 struct Vertex {
     vec3 position;
@@ -36,7 +36,6 @@ struct SceneData
     mat4 projection;
     mat4 view;
     mat4 model;
-    mat4 lightSpaceMatrix;
     vec4 lightPos;
 };
 
@@ -93,13 +92,21 @@ void main() {
     }
 
     gl_Position = sceneData.projection * sceneData.view * entityInstances[gl_InstanceIndex].model * totalPosition;
+
     outUV.x = v.uv_x;
+
 	outUV.y = v.uv_y;
+
     fragColor = v.color;
+
     outDiffuseTextureID = v.diffuseTextureID;
+
     outNormal = transpose(inverse(mat3(entityInstances[gl_InstanceIndex].model))) * skinnedNormal;
+
     fragPos = vec3(entityInstances[gl_InstanceIndex].model * totalPosition);
+
     lightPos = vec3(sceneData.lightPos);
-    fragPosLightSpace = sceneData.lightSpaceMatrix * vec4(fragPos, 1.0);
+
+    outView = sceneData.view;
 
 } 
