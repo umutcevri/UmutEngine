@@ -12,9 +12,13 @@
 
 #include <iostream>
 
+#include "json.hpp"
+
+using json = nlohmann::json;
+
 class UEngine
 {
-	VkExtent2D windowExtent{ 1280 , 720 };
+	VkExtent2D windowExtent{ 1920 , 1080 };
 	SDL_Window* window;
 	SDL_Event e;
 
@@ -28,6 +32,12 @@ class UEngine
 public:
 	void Run()
 	{
+		std::ifstream f("config/Config.json");
+		json data = json::parse(f);
+
+		windowExtent.width = data["resolution"][0];
+		windowExtent.height = data["resolution"][1];
+
 		InitWindow();
 
 		renderer.SetWindow(window);

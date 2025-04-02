@@ -1,0 +1,73 @@
+{
+  "assets": {
+    "models": [
+      {
+        "name": "cube",
+        "file": "assets/cube.fbx"
+      },
+      {
+        "name": "Knight",
+        "file": "assets/Knight.fbx"
+      }
+    ],
+    "animations": [
+      
+    ]
+  },
+  "entities": [
+    {
+      "name": "floor",
+      "components": {
+        "TransformComponent": {
+          "position": [ 0, 0, 0 ],
+          "rotation": [ 0, 0, 0 ],
+          "scale": [ 1, 1, 1 ]
+        },
+        "ModelComponent": {
+          "modelName": "cube",
+          "localTransform": {
+            "position": [ 0, -0.5, 0 ],
+            "rotation": [ 0, 0, 0 ],
+            "scale": [ 10, 1, 10 ]
+          }
+        },
+        "StaticRigidBody": {
+          "mass": 0,
+          "shape": {
+            "type": "box",
+            "halfExtents": [ 5, 0.5, 5 ]
+          }
+        }
+      }
+    },
+    {
+      "name": "knight",
+      "components": {
+        "TransformComponent": {
+          "position": [ 0, 0, 0 ],
+          "rotation": [ 0, 0, 0 ],
+          "scale": [ 1, 1, 1 ]
+        },
+        "ModelComponent": {
+          "modelName": "Knight",
+          "localTransform": {
+            "position": [ 0, -0.5, 0 ],
+            "rotation": [ 0, 0, 0 ],
+            "scale": [ 1, 1, 1 ]
+          }
+        },
+        "CharacterController": {
+          "speed": 5
+        },
+        "PlayerInputComponent": {
+
+        },
+        "CameraComponent": {
+          "offset": [ 0, 1, 0 ],
+          "armLength": 4,
+          "type": "thirdPerson"
+        }
+      }
+    }
+  ]
+}

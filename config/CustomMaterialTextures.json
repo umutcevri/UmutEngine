@@ -1,0 +1,24 @@
+{
+  "entries": [
+    {
+      "materialName": "Mat_head",
+      "textureType": "diffuse",
+      "texturePath": "textures/1_head_Albedo.tga"
+    },
+    {
+      "materialName": "Mat_body",
+      "textureType": "diffuse",
+      "texturePath": "textures/3_body_Albedo.tga"
+    },
+    {
+      "materialName": "Mat_armor",
+      "textureType": "diffuse",
+      "texturePath": "textures/3_armor_Albedo.tga"
+    },
+    {
+      "materialName": "Mat_eye",
+      "textureType": "diffuse",
+      "texturePath": "textures/1_eye_Albedo.tga"
+    }
+  ]
+}

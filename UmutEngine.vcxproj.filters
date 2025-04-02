@@ -100,5 +100,11 @@
     <None Include="README.md">
       <Filter>Resource Files</Filter>
     </None>
+    <None Include="config\Config.json">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="config\CustomMaterialTextures.json">
+      <Filter>Resource Files</Filter>
+    </None>
   </ItemGroup>
 </Project>

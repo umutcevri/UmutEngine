@@ -19,8 +19,7 @@ using json = nlohmann::json;
 void SceneManager::LoadScene(const std::string& path)
 {
 	std::ifstream file(path);
-	json scene;
-	file >> scene;
+	json scene = json::parse(file);
 
 	// Load assets
 	for (auto& model : scene["assets"]["models"]) {
@@ -111,7 +110,19 @@ void SceneManager::LoadScene(const std::string& path)
 			if (components.contains("ModelComponent"))
 			{
 				auto modelComponent = components["ModelComponent"];
-				registry.emplace<ModelComponent>(entity, ModelComponent{ modelComponent["modelName"] });
+
+				ModelComponent modelComp;
+				modelComp.modelName = modelComponent["modelName"];
+
+				if (modelComponent.contains("localTransform"))
+				{
+					auto localTransform = modelComponent["localTransform"];
+					modelComp.localPosition = glm::vec3(localTransform["position"][0], localTransform["position"][1], localTransform["position"][2]);
+					modelComp.localRotation = glm::vec3(localTransform["rotation"][0], localTransform["rotation"][1], localTransform["rotation"][2]);
+					modelComp.localScale = glm::vec3(localTransform["scale"][0], localTransform["scale"][1], localTransform["scale"][2]);
+				}
+
+				registry.emplace<ModelComponent>(entity, modelComp);
 
 				if (components.contains("AnimationComponent")) {
 					AnimationComponent animComp;
@@ -129,7 +140,7 @@ void SceneManager::LoadScene(const std::string& path)
 		if (components.contains("CameraComponent"))
 		{
 			auto cameraComponent = components["CameraComponent"];
-			if (cameraComponent["type"] == "thirdperson")
+			if (cameraComponent["type"] == "thirdPerson")
 			{
 				float armLength = cameraComponent["armLength"];
 
@@ -289,11 +300,19 @@ void SceneManager::UpdateEntityInstances(EntityInstance* entityInstanceBuffer, s
 		const TransformComponent& transformComp = view.get<TransformComponent>(entity);
 
 		glm::mat4 model = glm::mat4(1.0f);
+
 		model = glm::translate(model, transformComp.position);
 		model = glm::rotate(model, glm::radians(transformComp.rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
 		model = glm::rotate(model, glm::radians(transformComp.rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
 		model = glm::rotate(model, glm::radians(transformComp.rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
 		model = glm::scale(model, transformComp.scale);
+
+		model = glm::translate(model, modelComp.localPosition);
+		model = glm::rotate(model, glm::radians(modelComp.localRotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
+		model = glm::rotate(model, glm::radians(modelComp.localRotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
+		model = glm::rotate(model, glm::radians(modelComp.localRotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
+		model = glm::scale(model, modelComp.localScale);
+
 
 		EntityInstance data{};
 		data.model = model;
@@ -629,8 +648,11 @@ AnimationController SceneManager::LoadAnimationController(const std::string& fil
 
 void SceneManager::SetAnimationParameter(entt::entity entity, const std::string& paramName, float value)
 {
-	AnimationComponent& animComp = registry.get<AnimationComponent>(entity);
-	
-	animComp.parameters[paramName] = value;
+	//get anim comp if exists
+	if (registry.all_of<AnimationComponent>(entity))
+	{
+		AnimationComponent& animComp = registry.get<AnimationComponent>(entity);
+		animComp.parameters[paramName] = value;
+	}
 }
 

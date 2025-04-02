@@ -4,6 +4,10 @@
 
 #include <iostream>
 
+#include "json.hpp"
+
+using json = nlohmann::json;
+
 
 void AssetImporter::LoadModelFromFile(const char* path, Model& model, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, std::vector<std::string>& texturePaths)
 {
@@ -126,6 +130,10 @@ void AssetImporter::ProcessMesh(Mesh& mesh, aiMesh* assimpMesh, const aiScene* s
 	aiColor3D color(0.f, 0.f, 0.f);
 	material->Get(AI_MATKEY_COLOR_DIFFUSE, color);
 
+	std::cout << "Mesh name:" << assimpMesh->mName.C_Str() << std::endl;
+	std::cout << material->GetName().C_Str() << std::endl;
+
+
 	int diffuseTextureID = -1;
 
 	if (material->GetTextureCount(aiTextureType_DIFFUSE) > 0)
@@ -140,6 +148,8 @@ void AssetImporter::ProcessMesh(Mesh& mesh, aiMesh* assimpMesh, const aiScene* s
 
 		texturePath = "textures/" + texturePath;
 
+		std::cout << "Texture Path: " << texturePath << std::endl;
+
 		auto it = std::find(texturePaths.begin(), texturePaths.end(), texturePath);
 
 		if (it != texturePaths.end())
@@ -151,6 +161,32 @@ void AssetImporter::ProcessMesh(Mesh& mesh, aiMesh* assimpMesh, const aiScene* s
 			texturePaths.push_back(texturePath);
 
 			diffuseTextureID = static_cast<int>(texturePaths.size()) - 1;
+		}
+	}
+	else
+	{
+		std::ifstream f("config/CustomMaterialTextures.json");
+		json data = json::parse(f);
+
+		for (auto& entry : data["entries"])
+		{
+			if (entry["materialName"] == material->GetName().C_Str() && entry["textureType"] == "diffuse")
+			{
+				std::string texturePath = entry["texturePath"];
+
+				auto it = std::find(texturePaths.begin(), texturePaths.end(), texturePath);
+
+				if (it != texturePaths.end())
+				{
+					diffuseTextureID = std::distance(texturePaths.begin(), it);
+				}
+				else
+				{
+					texturePaths.push_back(texturePath);
+
+					diffuseTextureID = static_cast<int>(texturePaths.size()) - 1;
+				}
+			}
 		}
 	}
 

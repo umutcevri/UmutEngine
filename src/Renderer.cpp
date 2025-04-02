@@ -393,7 +393,7 @@ void URenderer::CreateTextureImage(std::string texturePath)
 {
     std::string extension = texturePath.substr(texturePath.find_last_of(".") + 1);
 
-    if (extension == "png" || extension == "jpg" || extension == "jpeg")
+    if (extension == "png" || extension == "jpg" || extension == "jpeg" || extension == "tga")
     {
         int texWidth, texHeight, texChannels;
         stbi_uc* pixels = stbi_load(texturePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
@@ -1975,6 +1975,8 @@ void URenderer::RecordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imag
         });
 
     camera = defaultCamera;
+
+    defaultCamera->Update(deltaTime);
 
     if (cameras.size() > 0)
     {

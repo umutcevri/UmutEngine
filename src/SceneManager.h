@@ -19,6 +19,9 @@ struct ModelComponent
 {
 	std::string modelName;
 	int boneTransformBufferIndex = -1;
+	glm::vec3 localPosition;
+	glm::vec3 localRotation;
+	glm::vec3 localScale;
 };
 
 struct AnimationTransition 
