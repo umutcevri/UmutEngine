@@ -1,0 +1,9 @@
+{
+  "name": "CharacterController",
+  "states": [
+    {
+      "name": "Idle",
+      "isDefault": true
+    }
+  ]
+}

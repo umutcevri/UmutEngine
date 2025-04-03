@@ -26,7 +26,7 @@ void SceneManager::LoadScene(const std::string& path)
 		SceneManager::Get().LoadModelFromFile(model["file"], model["name"]);
 	}
 	for (auto& animation : scene["assets"]["animations"]) {
-		SceneManager::Get().LoadAnimationToModel(animation["file"], animation["modelName"]);
+		SceneManager::Get().LoadAnimationToModel(animation["file"], animation["modelName"], animation["name"]);
 	}
 
 	// Create entities
@@ -161,9 +161,9 @@ void SceneManager::LoadModelFromFile(const std::string& path, const std::string&
 	AssetImporter::Get().LoadModelFromFile(path.c_str(), models[modelName], vertices, indices, texturePaths);
 }
 
-void SceneManager::LoadAnimationToModel(const std::string& path, const std::string& modelName)
+void SceneManager::LoadAnimationToModel(const std::string& path, const std::string& modelName, const std::string& animName)
 {
-	AssetImporter::Get().LoadAnimatonToModel(path.c_str(), models[modelName]);
+	AssetImporter::Get().LoadAnimatonToModel(path.c_str(), models[modelName], animName);
 }
 
 void SceneManager::UpdateAnimations(Model& model, Animation& anim, BoneTransformData& boneTransforms, float deltaTime)

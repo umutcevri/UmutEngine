@@ -94,9 +94,6 @@
     <None Include="scenes\Scene1.json">
       <Filter>Scenes</Filter>
     </None>
-    <None Include="assets\animcontrollers\PlayerAnimController.json">
-      <Filter>Resource Files</Filter>
-    </None>
     <None Include="README.md">
       <Filter>Resource Files</Filter>
     </None>
@@ -104,6 +101,9 @@
       <Filter>Resource Files</Filter>
     </None>
     <None Include="config\CustomMaterialTextures.json">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="config\PlayerAnimController.json">
       <Filter>Resource Files</Filter>
     </None>
   </ItemGroup>

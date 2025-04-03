@@ -11,7 +11,11 @@
       }
     ],
     "animations": [
-      
+      {
+        "name": "Idle",
+        "modelName": "Knight",
+        "file": "assets/KnightRun.fbx"
+      }
     ]
   },
   "entities": [
@@ -52,8 +56,8 @@
           "modelName": "Knight",
           "localTransform": {
             "position": [ 0, -0.5, 0 ],
-            "rotation": [ 0, 0, 0 ],
-            "scale": [ 1, 1, 1 ]
+            "rotation": [ -90, 0, 0 ],
+            "scale": [ 0.01, 0.01, 0.01 ]
           }
         },
         "CharacterController": {
@@ -66,6 +70,9 @@
           "offset": [ 0, 1, 0 ],
           "armLength": 4,
           "type": "thirdPerson"
+        },
+        "AnimationComponent": {
+          "animControllerPath": "config/PlayerAnimController.json" 
         }
       }
     }

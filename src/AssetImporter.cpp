@@ -21,10 +21,10 @@ void AssetImporter::LoadModelFromFile(const char* path, Model& model, std::vecto
 
 	ProcessNode(scene->mRootNode, scene, model, model.sceneRoot, vertices, indices, texturePaths);
 
-	LoadAnimation(scene, model);
+	LoadAnimation(scene, model, "");
 }
 
-void AssetImporter::LoadAnimatonToModel(const char* path, Model& model)
+void AssetImporter::LoadAnimatonToModel(const char* path, Model& model, std::string name)
 {
 	const aiScene* scene = importer.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenSmoothNormals);
 
@@ -34,10 +34,10 @@ void AssetImporter::LoadAnimatonToModel(const char* path, Model& model)
 		return;
 	}
 
-	LoadAnimation(scene, model);
+	LoadAnimation(scene, model, name);
 }
 
-void AssetImporter::LoadAnimation(const aiScene* scene, Model& model)
+void AssetImporter::LoadAnimation(const aiScene* scene, Model& model, std::string name)
 {
 	if (scene->HasAnimations())
 	{
@@ -45,7 +45,12 @@ void AssetImporter::LoadAnimation(const aiScene* scene, Model& model)
 		{
 			aiAnimation* animation = scene->mAnimations[i];
 			std::string animationName = animation->mName.C_Str();
-			std::cout << "Animation Name: " << animationName << std::endl;
+			
+			if (name == "")
+			{
+				name = animationName;
+			}
+
 			Animation anim;
 			anim.duration = animation->mDuration;
 			anim.ticksPerSecond = animation->mTicksPerSecond;
@@ -77,7 +82,7 @@ void AssetImporter::LoadAnimation(const aiScene* scene, Model& model)
 				}
 				anim.channels[animChannel.nodeName] = animChannel;
 			}
-			model.animations[animationName] = anim;
+			model.animations[name] = anim;
 		}
 	}
 }
@@ -269,6 +274,8 @@ void AssetImporter::ExtractBoneWeights(std::vector<Vertex>& meshVertices, aiMesh
 
 			float weight = static_cast<float>(weights[j].mWeight);
 
+			bool found = false;
+
 			for (int i = 0; i < 4; i++)
 			{
 				if (meshVertices[vertexID].boneIndices[i] < 0)
@@ -276,10 +283,19 @@ void AssetImporter::ExtractBoneWeights(std::vector<Vertex>& meshVertices, aiMesh
 					meshVertices[vertexID].boneWeights[i] = weight;
 					meshVertices[vertexID].boneIndices[i] = boneIndex;
 
+					found = true;
+
 					break;
 				}
 				
 			}
+
+			if (!found)
+			{
+				std::cout << "Vertex has more than 4 bone weights" << std::endl;
+			}
+
+
 		}
 	}
 }

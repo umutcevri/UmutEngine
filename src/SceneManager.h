@@ -123,7 +123,7 @@ public:
 
 	void LoadModelFromFile(const std::string& path, const std::string& modelName);
 
-	void LoadAnimationToModel(const std::string& path, const std::string& modelName);
+	void LoadAnimationToModel(const std::string& path, const std::string& modelName, const std::string& animName);
 
 	void UpdateAnimations(Model& model, Animation& anim, BoneTransformData& boneTransforms, float deltaTime);
 
