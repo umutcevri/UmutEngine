@@ -52,8 +52,10 @@ void AssetImporter::LoadAnimation(const aiScene* scene, Model& model, std::strin
 			}
 
 			Animation anim;
+
 			anim.duration = animation->mDuration;
 			anim.ticksPerSecond = animation->mTicksPerSecond;
+			
 			for (int j = 0; j < animation->mNumChannels; j++)
 			{
 				aiNodeAnim* channel = animation->mChannels[j];
@@ -289,13 +291,6 @@ void AssetImporter::ExtractBoneWeights(std::vector<Vertex>& meshVertices, aiMesh
 				}
 				
 			}
-
-			if (!found)
-			{
-				std::cout << "Vertex has more than 4 bone weights" << std::endl;
-			}
-
-
 		}
 	}
 }

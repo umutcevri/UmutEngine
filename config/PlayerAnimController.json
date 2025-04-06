@@ -2,8 +2,36 @@
   "name": "CharacterController",
   "states": [
     {
+      "type":  "State",
       "name": "Idle",
-      "isDefault": true
+      "animationName": "Idle",
+      "isDefault": true,
+      "transitions": [
+        {
+          "toState": "Run",
+          "transitionTime": 0.25,
+          "condition": "isMoving"
+        }
+      ]
+    },
+    {
+      "type": "State",
+      "name": "Run",
+      "animationName": "Run",
+      "transitions": [
+        {
+          "toState": "Idle",
+          "transitionTime": 0.25,
+          "condition": "notIsMoving"
+        }
+      ]
+    },
+    {
+      "type": "Montage",
+      "name": "Attack1",
+      "animationName": "Attack1",
+      "blendInDuration": 0.25,
+      "blendOutDuration": 0.25
     }
   ]
 }

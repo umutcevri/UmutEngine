@@ -37,7 +37,6 @@ struct Animation
 	std::string name;
 
 	double duration = 0.0f;
-	double currentTime = 0.0f;
 	double ticksPerSecond = 0.0f;
 
 	std::unordered_map<std::string, AnimationChannel> channels;

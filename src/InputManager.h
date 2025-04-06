@@ -11,6 +11,13 @@ public:
 	glm::vec2 lookInput;
 
 	bool jump = false;
+	bool attack = false;
+
+	bool bQuit = false;
+	bool renderDebugQuad = false;
+
+	bool increaseRenderDebugQuad = false;
+	bool increaseCameraIndex = false;
 
 	static InputManager& Get()
 	{
@@ -21,6 +28,8 @@ public:
 	void Update();
 
 private:
+	SDL_Event e;
+
 	void KeyboardInput();
 
 	void MouseInput();

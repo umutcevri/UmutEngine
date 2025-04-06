@@ -20,7 +20,6 @@ class UEngine
 {
 	VkExtent2D windowExtent{ 1920 , 1080 };
 	SDL_Window* window;
-	SDL_Event e;
 
 	URenderer renderer;
 
@@ -87,45 +86,17 @@ private:
 		lastFrame = currentFrame;
 
 		InputManager::Get().Update();
+		
+		bQuit = InputManager::Get().bQuit;
 
-		while (SDL_PollEvent(&e) != 0)
-		{
-			if (e.type == SDL_QUIT)
-				bQuit = true;
+		renderer.renderDebugQuad = InputManager::Get().renderDebugQuad;
 
-			if (e.type == SDL_KEYDOWN)
-			{
-				if (e.key.keysym.sym == SDLK_ESCAPE)
-				{
-					bQuit = true;
-				}
-				else if (e.key.keysym.sym == SDLK_m)
-				{
-					if (SDL_GetRelativeMouseMode() == SDL_TRUE)
-						SDL_SetRelativeMouseMode(SDL_FALSE);
-					else
-						SDL_SetRelativeMouseMode(SDL_TRUE);
-				}
-				else if (e.key.keysym.sym == SDLK_o)
-				{
-					renderer.renderDebugQuad = !renderer.renderDebugQuad;
-				}
-				else if (e.key.keysym.sym == SDLK_n)
-				{
-					renderer.cameraIndex += 1;
-				}
-				else if (e.key.keysym.sym == SDLK_b)
-				{
-					renderer.debugQuadTextureIndex += 1;
+		renderer.cameraIndex += InputManager::Get().increaseCameraIndex;
+			
+		renderer.debugQuadTextureIndex += InputManager::Get().increaseRenderDebugQuad;
 
-					if (renderer.debugQuadTextureIndex >= NUM_CASCADES)
-						renderer.debugQuadTextureIndex = 0;
-
-					std::cout << renderer.debugQuadTextureIndex << std::endl;
-				}
-			}
-
-		}
+		if (renderer.debugQuadTextureIndex >= NUM_CASCADES)
+			renderer.debugQuadTextureIndex = 0;
 
 		UPhysics::Get().Update(deltaTime);
 

@@ -4,6 +4,54 @@
 
 void InputManager::Update()
 {
+	bQuit = false;
+	increaseRenderDebugQuad = false;
+	increaseCameraIndex = false;
+	attack = false;
+
+
+	while (SDL_PollEvent(&e) != 0)
+	{
+		if (e.type == SDL_QUIT)
+			bQuit = true;
+
+		if (e.type == SDL_KEYDOWN)
+		{
+			if (e.key.keysym.sym == SDLK_ESCAPE)
+			{
+				bQuit = true;
+			}
+			else if (e.key.keysym.sym == SDLK_m)
+			{
+				if (SDL_GetRelativeMouseMode() == SDL_TRUE)
+					SDL_SetRelativeMouseMode(SDL_FALSE);
+				else
+					SDL_SetRelativeMouseMode(SDL_TRUE);
+			}
+			else if (e.key.keysym.sym == SDLK_o)
+			{
+				renderDebugQuad = !renderDebugQuad;
+			}
+			else if (e.key.keysym.sym == SDLK_n)
+			{
+				increaseCameraIndex = true;
+			}
+			else if (e.key.keysym.sym == SDLK_b)
+			{
+				increaseRenderDebugQuad = true;
+			}
+		}
+
+		if (e.type == SDL_MOUSEBUTTONDOWN)
+		{
+			if (e.button.button == SDL_BUTTON_LEFT)
+			{
+				attack = true;
+			}
+		}
+
+	}
+
 	KeyboardInput();
 	MouseInput();
 }

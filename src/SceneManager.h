@@ -24,17 +24,40 @@ struct ModelComponent
 	glm::vec3 localScale;
 };
 
+struct AnimationInstance
+{
+	//animation asset name
+	std::string name;
+	float currentTime = 0.0f;
+};
+
 struct AnimationTransition 
 {
-	std::string fromAnim;
-	std::string toAnim;
+	std::string fromState;
+	std::string toState;
 	float transitionTime;
-	bool onAnimationEnd = false;
 	std::string condition = "";
 };
 
+struct AnimationMontage
+{
+	std::string name;
+	AnimationInstance animation;
+	float blendInDuration = 0.0f;
+	float blendOutDuration = 0.0f;
+	float currentBlendTime = 0.0f; // Tracks time for both blend-in and blend-out
+	float playbackRate = 1.0f;
+	float montageEndTime = 0.0f; // Calculated time when the animation clip ends
+
+	bool isPlaying = false;
+	bool isBlendingIn = false;
+	bool isBlendingOut = false;
+};
+
+
 struct AnimationState 
 {
+	AnimationInstance animation;
 	std::string name;
 	bool isDefault = false;
 	std::vector<AnimationTransition> transitions;
@@ -43,12 +66,26 @@ struct AnimationState
 struct AnimationController 
 {
 	std::string name;
+
 	std::map<std::string, AnimationState> states;
+	std::map<std::string, AnimationMontage> montages;
+
+	std::string activeMontage;
+
 	std::string currentState;
 	std::string targetState;
+
 	float blendFactor = 0.0f;
 	float transitionTime = 0.0f;
 	float currentTransitionDuration = 0.0f;
+
+	float activeMontageBlendTime = 0.0f;
+	float montageBlendFactor = 0.0f; // Tracks the blending factor for montages
+
+	float isMontageBlendingIn = false;
+	float isMontageBlendingOut = false;
+
+
 };
 
 struct AnimationComponent
@@ -125,11 +162,11 @@ public:
 
 	void LoadAnimationToModel(const std::string& path, const std::string& modelName, const std::string& animName);
 
-	void UpdateAnimations(Model& model, Animation& anim, BoneTransformData& boneTransforms, float deltaTime);
+	void UpdateBoneTransforms(AnimationInstance& anim, Model& model, SceneNode &sceneNode, BoneTransformData& boneTransforms, glm::mat4 parentTransform);
 
-	void UpdateBoneTransforms(Animation& anim, Model& model, SceneNode &sceneNode, BoneTransformData& boneTransforms, glm::mat4 parentTransform);
+	void UpdateBoneTransforms(AnimationInstance& anim, AnimationInstance& anim2, Model& model, SceneNode& sceneNode, BoneTransformData& boneTransforms, glm::mat4 parentTransform, float blendFactor);
 
-	void UpdateBoneTransforms(Animation& anim, Animation& anim2, Model& model, SceneNode& sceneNode, BoneTransformData& boneTransforms, glm::mat4 parentTransform, float blendFactor);
+	void UpdateBoneTransforms(std::vector<AnimationInstance> animations, Model& model, SceneNode& sceneNode, BoneTransformData& boneTransforms, glm::mat4 parentTransform, std::vector<float> blendFactors);
 
 	glm::vec3 GetAnimationPosition(std::vector<PositionKey>& keys, double currentTime);
 
@@ -152,4 +189,6 @@ public:
 	AnimationController LoadAnimationController(const std::string& filepath);
 
 	void SetAnimationParameter(entt::entity entity, const std::string& paramName, float value);
+
+	void PlayAnimationMontage(entt::entity entity, const std::string& montageName);
 };

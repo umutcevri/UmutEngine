@@ -14,7 +14,17 @@
       {
         "name": "Idle",
         "modelName": "Knight",
+        "file": "assets/KnightIdle.fbx"
+      },
+      {
+        "name": "Run",
+        "modelName": "Knight",
         "file": "assets/KnightRun.fbx"
+      },
+      {
+        "name": "Attack1",
+        "modelName": "Knight",
+        "file": "assets/KnightAttack_PrimaryA.FBX"
       }
     ]
   },

@@ -166,26 +166,19 @@ void SceneManager::LoadAnimationToModel(const std::string& path, const std::stri
 	AssetImporter::Get().LoadAnimatonToModel(path.c_str(), models[modelName], animName);
 }
 
-void SceneManager::UpdateAnimations(Model& model, Animation& anim, BoneTransformData& boneTransforms, float deltaTime)
-{
-	anim.currentTime += anim.ticksPerSecond * deltaTime;
-
-	anim.currentTime = fmod(anim.currentTime, anim.duration);
-
-	UpdateBoneTransforms(anim, model, model.sceneRoot, boneTransforms, glm::mat4(1.0f));
-}
-
-void SceneManager::UpdateBoneTransforms(Animation& anim, Model& model, SceneNode& sceneNode, BoneTransformData& boneTransforms, glm::mat4 parentTransform)
+void SceneManager::UpdateBoneTransforms(AnimationInstance& anim, Model& model, SceneNode& sceneNode, BoneTransformData& boneTransforms, glm::mat4 parentTransform)
 {
 	std::string nodeName = sceneNode.name;
 
 	glm::mat4 nodeLocalTransform = sceneNode.localTransform;
 
-	if (anim.channels.find(nodeName) != anim.channels.end())
+	Animation& animAsset = model.animations[anim.name];
+
+	if (animAsset.channels.find(nodeName) != animAsset.channels.end())
 	{
-		nodeLocalTransform = glm::translate(glm::mat4(1.0f), GetAnimationPosition(anim.channels[nodeName].positionKeys, anim.currentTime)) *
-			glm::toMat4(GetAnimationRotation(anim.channels[nodeName].rotationKeys, anim.currentTime)) *
-			glm::scale(glm::mat4(1.0f), GetAnimationScaling(anim.channels[nodeName].scalingKeys, anim.currentTime));
+		nodeLocalTransform = glm::translate(glm::mat4(1.0f), GetAnimationPosition(animAsset.channels[nodeName].positionKeys, anim.currentTime)) *
+			glm::toMat4(GetAnimationRotation(animAsset.channels[nodeName].rotationKeys, anim.currentTime)) *
+			glm::scale(glm::mat4(1.0f), GetAnimationScaling(animAsset.channels[nodeName].scalingKeys, anim.currentTime));
 	}
 
 	glm::mat4 globalTransform = parentTransform * nodeLocalTransform;
@@ -203,7 +196,7 @@ void SceneManager::UpdateBoneTransforms(Animation& anim, Model& model, SceneNode
 	}
 }
 
-void SceneManager::UpdateBoneTransforms(Animation& anim, Animation& anim2, Model& model, SceneNode& sceneNode, BoneTransformData& boneTransforms, glm::mat4 parentTransform, float blendFactor)
+void SceneManager::UpdateBoneTransforms(AnimationInstance& anim, AnimationInstance& anim2, Model& model, SceneNode& sceneNode, BoneTransformData& boneTransforms, glm::mat4 parentTransform, float blendFactor)
 {
 	//blend position, rotation, and scaling individually
 
@@ -211,15 +204,18 @@ void SceneManager::UpdateBoneTransforms(Animation& anim, Animation& anim2, Model
 
 	glm::mat4 nodeLocalTransform = sceneNode.localTransform;
 
-	if (anim.channels.find(nodeName) != anim.channels.end() && anim2.channels.find(nodeName) != anim2.channels.end())
+	Animation& animAsset1 = model.animations[anim.name];
+	Animation& animAsset2 = model.animations[anim2.name];
+
+	if (animAsset1.channels.find(nodeName) != animAsset1.channels.end() && animAsset2.channels.find(nodeName) != animAsset2.channels.end())
 	{
-		glm::vec3 position = glm::mix(GetAnimationPosition(anim.channels[nodeName].positionKeys, anim.currentTime),
-			GetAnimationPosition(anim2.channels[nodeName].positionKeys, anim2.currentTime), blendFactor);
+		glm::vec3 position = glm::mix(GetAnimationPosition(animAsset1.channels[nodeName].positionKeys, anim.currentTime),
+			GetAnimationPosition(animAsset2.channels[nodeName].positionKeys, anim2.currentTime), blendFactor);
 
-		glm::quat rotation = glm::slerp(GetAnimationRotation(anim.channels[nodeName].rotationKeys, anim.currentTime), GetAnimationRotation(anim2.channels[nodeName].rotationKeys, anim2.currentTime), blendFactor);
+		glm::quat rotation = glm::slerp(GetAnimationRotation(animAsset1.channels[nodeName].rotationKeys, anim.currentTime), GetAnimationRotation(animAsset2.channels[nodeName].rotationKeys, anim2.currentTime), blendFactor);
 
-		glm::vec3 scaling = glm::mix(GetAnimationScaling(anim.channels[nodeName].scalingKeys, anim.currentTime),
-			GetAnimationScaling(anim2.channels[nodeName].scalingKeys, anim2.currentTime), blendFactor);
+		glm::vec3 scaling = glm::mix(GetAnimationScaling(animAsset1.channels[nodeName].scalingKeys, anim.currentTime),
+			GetAnimationScaling(animAsset2.channels[nodeName].scalingKeys, anim2.currentTime), blendFactor);
 
 		nodeLocalTransform = glm::translate(glm::mat4(1.0f), position) * glm::toMat4(rotation) * glm::scale(glm::mat4(1.0f), scaling);
 	}
@@ -239,6 +235,59 @@ void SceneManager::UpdateBoneTransforms(Animation& anim, Animation& anim2, Model
 	}
 }
 
+void SceneManager::UpdateBoneTransforms(std::vector<AnimationInstance> animations, Model& model, SceneNode& sceneNode, BoneTransformData& boneTransforms, glm::mat4 parentTransform, std::vector<float> blendFactors)
+{
+	std::string nodeName = sceneNode.name;
+
+	glm::mat4 nodeLocalTransform = sceneNode.localTransform;
+
+	glm::vec3 position(0.0f);
+	glm::quat rotation(0.0f, 0.0f, 0.0f, 0.0f);
+	glm::vec3 scaling(0.0f);
+
+	bool foundAnyNode = false;
+
+	for (size_t i = 0; i < animations.size(); i++)
+	{
+		Animation& animAsset = model.animations[animations[i].name];
+
+		if (animAsset.channels.find(nodeName) != animAsset.channels.end())
+		{
+			position += GetAnimationPosition(animAsset.channels[nodeName].positionKeys, animations[i].currentTime) * blendFactors[i];
+
+			glm::quat animRotation = GetAnimationRotation(animAsset.channels[nodeName].rotationKeys, animations[i].currentTime);
+
+			if (glm::dot(animRotation, rotation) < 0.0f)
+				animRotation = -animRotation;
+
+			rotation += animRotation * blendFactors[i];
+
+			scaling += GetAnimationScaling(animAsset.channels[nodeName].scalingKeys, animations[i].currentTime) * blendFactors[i];
+
+			foundAnyNode = true;
+		}
+	}
+
+	if (foundAnyNode)
+	{
+		nodeLocalTransform = glm::translate(glm::mat4(1.0f), position) * glm::toMat4(rotation) * glm::scale(glm::mat4(1.0f), scaling);
+	}
+
+	glm::mat4 globalTransform = parentTransform * nodeLocalTransform;
+
+	if (model.boneMap.find(nodeName) != model.boneMap.end())
+	{
+		int boneIndex = model.boneMap[nodeName].boneIndex;
+
+		boneTransforms.boneTransforms[boneIndex] = globalTransform * model.boneMap[nodeName].offsetMatrix;
+	}
+
+	for (int i = 0; i < sceneNode.children.size(); i++)
+	{
+		UpdateBoneTransforms(animations, model, sceneNode.children[i], boneTransforms, globalTransform, blendFactors);
+	}
+}
+
 glm::vec3 SceneManager::GetAnimationPosition(std::vector<PositionKey>& keys, double currentTime)
 {
 	for (size_t i = 0; i < keys.size() - 1; i++)
@@ -253,6 +302,15 @@ glm::vec3 SceneManager::GetAnimationPosition(std::vector<PositionKey>& keys, dou
 
 			return position;
 		}
+	}
+
+	if (currentTime > keys[keys.size() - 1].time)
+	{
+		return keys[keys.size() - 1].value;
+	}
+	else
+	{
+		return keys[0].value;
 	}
 }
 
@@ -271,11 +329,20 @@ glm::vec3 SceneManager::GetAnimationScaling(std::vector<ScalingKey>& keys, doubl
 			return scaling;
 		}
 	}
+
+	if (currentTime > keys[keys.size() - 1].time)
+	{
+		return keys[keys.size() - 1].value;
+	}
+	else
+	{
+		return keys[0].value;
+	}
 }
 
 glm::quat SceneManager::GetAnimationRotation(std::vector<RotationKey>& keys, double currentTime)
 {
-	for (size_t i = 0; i < keys.size(); i++)
+	for (size_t i = 0; i < keys.size() - 1; i++)
 	{
 		if (currentTime >= keys[i].time && currentTime <= keys[i + 1].time)
 		{
@@ -287,6 +354,15 @@ glm::quat SceneManager::GetAnimationRotation(std::vector<RotationKey>& keys, dou
 
 			return rotation;
 		}
+	}
+
+	if (currentTime > keys[keys.size() - 1].time)
+	{
+		return keys[keys.size() - 1].value;
+	}
+	else
+	{
+		return keys[0].value;
 	}
 
 }
@@ -358,6 +434,11 @@ void SceneManager::UpdatePhysicsActors(float deltaTime)
 	for (entt::entity entity : view2)
 	{
 		CharacterControllerComponent& controllerComp = view2.get<CharacterControllerComponent>(entity);
+
+		if (InputManager::Get().attack)
+		{
+			PlayAnimationMontage(entity, "Attack1");
+		}
 
 		PxControllerState state;
 		controllerComp.controller->getState(state);
@@ -501,6 +582,53 @@ void SceneManager::ProcessAnimationController(Model& model, AnimationComponent& 
 {
 	AnimationController& controller = animComp.controller;
 
+	if (!controller.activeMontage.empty())
+	{
+		if (controller.isMontageBlendingIn)
+		{
+			controller.activeMontageBlendTime += deltaTime;
+			controller.montageBlendFactor = std::min(controller.activeMontageBlendTime / controller.montages[controller.activeMontage].blendInDuration, 1.0f);
+
+			if (controller.activeMontageBlendTime >= controller.montages[controller.activeMontage].blendInDuration)
+			{
+				controller.isMontageBlendingIn = false;
+				controller.activeMontageBlendTime = 0.0f;
+			}
+		}
+		else if (!controller.isMontageBlendingOut)
+		{
+			AnimationMontage& montage = controller.montages[controller.activeMontage];
+
+			AnimationInstance& montageAnim = controller.montages[controller.activeMontage].animation;
+
+			Animation& montageAnimAsset = model.animations[montageAnim.name];
+
+			std::cout << montageAnim.currentTime << " / " << montageAnimAsset.duration << std::endl;
+
+			if (montageAnim.currentTime >= montageAnimAsset.duration - (montage.blendOutDuration * montageAnimAsset.ticksPerSecond))
+			{
+				controller.isMontageBlendingOut = true;
+				controller.isMontageBlendingIn = false;
+				controller.activeMontageBlendTime = 0.0f;
+			}
+		}
+
+		if (controller.isMontageBlendingOut)
+		{
+			controller.activeMontageBlendTime += deltaTime;
+			controller.montageBlendFactor = std::max(1.0f - controller.activeMontageBlendTime / controller.montages[controller.activeMontage].blendOutDuration, 0.0f);
+
+			
+
+			if (controller.activeMontageBlendTime >= controller.montages[controller.activeMontage].blendOutDuration)
+			{
+				controller.isMontageBlendingOut = false;
+				controller.activeMontageBlendTime = 0.0f;
+				controller.activeMontage = "";
+			}
+		}
+	}
+
 	if (!controller.targetState.empty())
 	{
 		controller.transitionTime += deltaTime;
@@ -508,9 +636,7 @@ void SceneManager::ProcessAnimationController(Model& model, AnimationComponent& 
 
 		if (controller.blendFactor >= 1.0f)
 		{
-			Animation& currentAnim = model.animations.at(controller.currentState);
-
-			currentAnim.currentTime = 0.0f;
+			controller.states.at(controller.currentState).animation.currentTime = 0;
 
 			controller.currentState = controller.targetState;
 			controller.targetState = "";
@@ -521,37 +647,17 @@ void SceneManager::ProcessAnimationController(Model& model, AnimationComponent& 
 		return;
 	}
 
-	Animation& currentAnim = model.animations.at(controller.currentState);
-
-	float nextFrameTime = currentAnim.currentTime + (currentAnim.ticksPerSecond * deltaTime);
-
 	// Check for transitions from current state
 	const AnimationState& currentState = controller.states.at(controller.currentState);
+
 	for (const auto& transition : currentState.transitions)
 	{
-		// End of animation transition
-		if (transition.onAnimationEnd)
+		
+		if (!transition.condition.empty() && animComp.parameters.count(transition.condition) && animComp.parameters[transition.condition] > 0.5f)
 		{
-			if (nextFrameTime >= (currentAnim.duration / currentAnim.ticksPerSecond) - transition.transitionTime)
-			{
-				std::cout << (currentAnim.duration / currentAnim.ticksPerSecond) << " " << transition.transitionTime << std::endl;
+			controller.targetState = transition.toState;
 
-
-				std::cout << "Transitioning to: " << controller.currentState << " -> " << transition.toAnim << std::endl;
-
-				controller.targetState = transition.toAnim;
-				controller.currentTransitionDuration = transition.transitionTime;
-				controller.transitionTime = 0.0f;
-				controller.blendFactor = 0.0f;
-				break;
-			}
-		}
-		// Parameter transition
-		else if (!transition.condition.empty() && animComp.parameters.count(transition.condition) && animComp.parameters[transition.condition] > 0.5f)
-		{
-			controller.targetState = transition.toAnim;
-
-			std::cout << "Transitioning to: " << controller.currentState << " -> " << transition.toAnim << std::endl;
+			std::cout << "Transitioning to: " << controller.currentState << " -> " << transition.toState << std::endl;
 
 			controller.currentTransitionDuration = transition.transitionTime;
 			controller.transitionTime = 0.0f;
@@ -565,25 +671,61 @@ void SceneManager::UpdateAnimationsWithBlending(Model& model, AnimationComponent
 {
 	AnimationController& controller = animComp.controller;
 
-	Animation& currentAnim = model.animations.at(controller.currentState);
+	std::vector<AnimationInstance> animations;
+	std::vector<float> blendFactors;
 
-	currentAnim.currentTime += currentAnim.ticksPerSecond * deltaTime;
-	currentAnim.currentTime = fmod(currentAnim.currentTime, currentAnim.duration);
+	float montageBlendFactor = 0.0f;
+
+	if (!controller.activeMontage.empty())
+	{
+		AnimationMontage& montage = controller.montages[controller.activeMontage];
+
+		AnimationInstance& montageAnim = montage.animation;
+
+		Animation& montageAnimAsset = model.animations[montageAnim.name];
+
+		montageAnim.currentTime += montageAnimAsset.ticksPerSecond * deltaTime;
+		montageAnim.currentTime = fmod(montageAnim.currentTime, montageAnimAsset.duration);
+
+		montageBlendFactor = controller.montageBlendFactor;
+
+		animations.push_back(montageAnim);
+		blendFactors.push_back(montageBlendFactor);
+	}
+
+	AnimationInstance& currentAnim = controller.states.at(controller.currentState).animation;
+
+	Animation& currentAnimAsset = model.animations[currentAnim.name];
+
+	currentAnim.currentTime += currentAnimAsset.ticksPerSecond * deltaTime;
+	currentAnim.currentTime = fmod(currentAnim.currentTime, currentAnimAsset.duration);
+
+	animations.push_back(currentAnim);
 
 	if (!controller.targetState.empty())
 	{
-		Animation& targetAnim = model.animations.at(controller.targetState);
-		targetAnim.currentTime += targetAnim.ticksPerSecond * deltaTime;
-		targetAnim.currentTime = fmod(targetAnim.currentTime, targetAnim.duration);
+		AnimationInstance& targetAnim = controller.states.at(controller.targetState).animation;
 
-		// Calculate bone transforms for both animations
-		UpdateBoneTransforms(currentAnim, targetAnim, model, model.sceneRoot, boneTransforms, glm::mat4(1.0f), controller.blendFactor);
+		Animation& targetAnimAsset = model.animations[targetAnim.name];
+
+		targetAnim.currentTime += targetAnimAsset.ticksPerSecond * deltaTime;
+
+		targetAnim.currentTime = fmod(targetAnim.currentTime, targetAnimAsset.duration);
+
+		animations.push_back(targetAnim);
+
+		float targetBlendFactor = controller.blendFactor * (1.0f - montageBlendFactor);
+		float currentBlendFactor = (1.0f - controller.blendFactor) * (1.0f - montageBlendFactor);
+
+		blendFactors.push_back(currentBlendFactor);
+		blendFactors.push_back(targetBlendFactor);
 	}
 	else
 	{
-		// Just update bone transforms for current animation
-		UpdateBoneTransforms(currentAnim, model, model.sceneRoot, boneTransforms, glm::mat4(1.0f));
+		blendFactors.push_back(1.0f - montageBlendFactor);
 	}
+
+	UpdateBoneTransforms(animations, model, model.sceneRoot, boneTransforms, glm::mat4(1.0f), blendFactors);
 }
 
 AnimationController SceneManager::LoadAnimationController(const std::string& filepath)
@@ -605,38 +747,55 @@ AnimationController SceneManager::LoadAnimationController(const std::string& fil
 	// Load states
 	for (const auto& stateJson : jsonData["states"])
 	{
-		AnimationState state;
-		state.name = stateJson["name"];
 
-		if (stateJson.contains("isDefault"))
-			state.isDefault = stateJson["isDefault"];
-
-		// If this is the default state, set it as current
-		if (state.isDefault)
-			controller.currentState = state.name;
-
-		// Load transitions
-		if (stateJson.contains("transitions"))
+		if (stateJson["type"] == "State")
 		{
-			for (const auto& transitionJson : stateJson["transitions"])
+			AnimationState state;
+			state.name = stateJson["name"];
+
+			if (stateJson.contains("isDefault"))
+				state.isDefault = stateJson["isDefault"];
+
+			// If this is the default state, set it as current
+			if (state.isDefault)
+				controller.currentState = state.name;
+
+			// Load transitions
+			if (stateJson.contains("transitions"))
 			{
-				AnimationTransition transition;
-				transition.fromAnim = state.name;
-				transition.toAnim = transitionJson["toState"];
-				transition.transitionTime = transitionJson["transitionTime"];
+				for (const auto& transitionJson : stateJson["transitions"])
+				{
+					AnimationTransition transition;
+					transition.fromState = state.name;
+					transition.toState = transitionJson["toState"];
+					transition.transitionTime = transitionJson["transitionTime"];
 
-				if (transitionJson.contains("onAnimationEnd") && transitionJson["onAnimationEnd"]) {
-					transition.onAnimationEnd = true;
-				}
-				else if (transitionJson.contains("condition")) {
-					transition.condition = transitionJson["condition"];
-				}
+					if (transitionJson.contains("condition")) {
+						transition.condition = transitionJson["condition"];
+					}
 
-				state.transitions.push_back(transition);
+					state.transitions.push_back(transition);
+				}
 			}
-		}
 
-		controller.states[state.name] = state;
+			AnimationInstance animInstance;
+
+			animInstance.name = stateJson["animationName"];
+
+			state.animation = animInstance;
+
+			controller.states[state.name] = state;
+		}
+		else if (stateJson["type"] == "Montage")
+		{
+			AnimationMontage montage;
+			montage.name = stateJson["name"];
+			montage.animation.name = stateJson["animationName"];
+			montage.blendInDuration = stateJson["blendInDuration"];
+			montage.blendOutDuration = stateJson["blendOutDuration"];
+
+			controller.montages[montage.name] = montage;
+		}
 	}
 
 	// Ensure we have a current state
@@ -653,6 +812,37 @@ void SceneManager::SetAnimationParameter(entt::entity entity, const std::string&
 	{
 		AnimationComponent& animComp = registry.get<AnimationComponent>(entity);
 		animComp.parameters[paramName] = value;
+	}
+}
+
+void SceneManager::PlayAnimationMontage(entt::entity entity, const std::string& montageName)
+{
+	//get anim comp if exists
+
+	if (registry.all_of<AnimationComponent>(entity))
+	{
+		AnimationComponent& animComp = registry.get<AnimationComponent>(entity);
+		
+		AnimationController& controller = animComp.controller;
+
+		//if controller contains montageName set current montage
+
+		if (controller.montages.find(montageName) != controller.montages.end())
+		{
+			AnimationInstance& montageAnim = controller.montages[montageName].animation;
+
+			montageAnim.currentTime = 0.0f;
+
+			controller.activeMontage = montageName;
+			controller.isMontageBlendingIn = true;
+			controller.isMontageBlendingOut = false;
+			controller.activeMontageBlendTime = 0.0f;
+			controller.montageBlendFactor = 0.0f;
+		}
+		else
+		{
+			std::cout << "Montage not found: " << montageName << std::endl;
+		}
 	}
 }
 
