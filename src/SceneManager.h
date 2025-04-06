@@ -158,7 +158,7 @@ public:
 
 	void LoadScene(const std::string& path);
 
-	void LoadModelFromFile(const std::string& path, const std::string& modelName);
+	void LoadModelFromFile(const std::string& path, const std::string& modelName, bool customMaterialTextures);
 
 	void LoadAnimationToModel(const std::string& path, const std::string& modelName, const std::string& animName);
 

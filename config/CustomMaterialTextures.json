@@ -19,6 +19,16 @@
       "materialName": "Mat_eye",
       "textureType": "diffuse",
       "texturePath": "textures/1_eye_Albedo.tga"
+    },
+    {
+      "materialName": "Armour_Metal_Battered",
+      "textureType": "diffuse",
+      "texturePath": "textures/T_Armour_Battered_Metal_BaseColorOpacity.png"
+    },
+    {
+      "materialName": "Armour_Cloth_Battered",
+      "textureType": "diffuse",
+      "texturePath": "textures/T_Armour_Battered_Cloth_BaseColor.png"
     }
   ]
 }

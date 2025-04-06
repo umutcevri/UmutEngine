@@ -23,7 +23,15 @@ void SceneManager::LoadScene(const std::string& path)
 
 	// Load assets
 	for (auto& model : scene["assets"]["models"]) {
-		SceneManager::Get().LoadModelFromFile(model["file"], model["name"]);
+
+		bool customMaterialTextures = false;
+
+		if (model.contains("customMaterialTextures"))
+		{
+			customMaterialTextures = true;
+		}
+
+		SceneManager::Get().LoadModelFromFile(model["file"], model["name"], customMaterialTextures);
 	}
 	for (auto& animation : scene["assets"]["animations"]) {
 		SceneManager::Get().LoadAnimationToModel(animation["file"], animation["modelName"], animation["name"]);
@@ -156,9 +164,13 @@ void SceneManager::LoadScene(const std::string& path)
 	}
 }
 
-void SceneManager::LoadModelFromFile(const std::string& path, const std::string& modelName)
+void SceneManager::LoadModelFromFile(const std::string& path, const std::string& modelName, bool customMaterialTextures)
 {
-	AssetImporter::Get().LoadModelFromFile(path.c_str(), models[modelName], vertices, indices, texturePaths);
+	Model& model = models[modelName];
+
+	model.customMaterialTextures = customMaterialTextures;
+
+	AssetImporter::Get().LoadModelFromFile(path.c_str(), model, vertices, indices, texturePaths);
 }
 
 void SceneManager::LoadAnimationToModel(const std::string& path, const std::string& modelName, const std::string& animName)

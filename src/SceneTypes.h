@@ -72,4 +72,6 @@ struct Model
 	std::unordered_map<std::string, Bone> boneMap;
 
 	SceneNode sceneRoot;
+
+	bool customMaterialTextures = false;
 };

@@ -30,7 +30,7 @@
       "type": "Montage",
       "name": "Attack1",
       "animationName": "Attack1",
-      "blendInDuration": 0.25,
+      "blendInDuration": 0.1,
       "blendOutDuration": 0.25
     }
   ]

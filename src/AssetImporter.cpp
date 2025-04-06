@@ -143,34 +143,8 @@ void AssetImporter::ProcessMesh(Mesh& mesh, aiMesh* assimpMesh, const aiScene* s
 
 	int diffuseTextureID = -1;
 
-	if (material->GetTextureCount(aiTextureType_DIFFUSE) > 0)
-	{
-		aiString _texturePath;
-
-		material->GetTexture(aiTextureType_DIFFUSE, 0, &_texturePath);
-
-		std::string texturePath = _texturePath.C_Str();
-
-		//append textures/ to the beginning of the texture path
-
-		texturePath = "textures/" + texturePath;
-
-		std::cout << "Texture Path: " << texturePath << std::endl;
-
-		auto it = std::find(texturePaths.begin(), texturePaths.end(), texturePath);
-
-		if (it != texturePaths.end())
-		{
-			diffuseTextureID = std::distance(texturePaths.begin(), it);
-		}
-		else
-		{
-			texturePaths.push_back(texturePath);
-
-			diffuseTextureID = static_cast<int>(texturePaths.size()) - 1;
-		}
-	}
-	else
+	
+	if (model.customMaterialTextures)
 	{
 		std::ifstream f("config/CustomMaterialTextures.json");
 		json data = json::parse(f);
@@ -196,7 +170,35 @@ void AssetImporter::ProcessMesh(Mesh& mesh, aiMesh* assimpMesh, const aiScene* s
 			}
 		}
 	}
+	else if (material->GetTextureCount(aiTextureType_DIFFUSE) > 0)
+	{
+		aiString _texturePath;
 
+		material->GetTexture(aiTextureType_DIFFUSE, 0, &_texturePath);
+
+		std::string texturePath = _texturePath.C_Str();
+
+		size_t lastSlashPos = texturePath.rfind('\\');
+
+		texturePath = texturePath.substr(lastSlashPos + 1);
+
+		texturePath = "textures/" + texturePath;
+
+		std::cout << "Texture Path: " << texturePath << std::endl;
+
+		auto it = std::find(texturePaths.begin(), texturePaths.end(), texturePath);
+
+		if (it != texturePaths.end())
+		{
+			diffuseTextureID = std::distance(texturePaths.begin(), it);
+		}
+		else
+		{
+			texturePaths.push_back(texturePath);
+
+			diffuseTextureID = static_cast<int>(texturePaths.size()) - 1;
+		}
+	}
 
 	std::vector<Vertex> meshVertices;
 
