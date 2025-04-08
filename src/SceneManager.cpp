@@ -40,6 +40,9 @@ void SceneManager::LoadScene(const std::string& path)
 	// Create entities
 	for (auto& entityData : scene["entities"]) {
 		entt::entity entity = registry.create();
+
+		entityMap[entityData["name"]] = entity;
+
 		auto& components = entityData["components"];
 
 		if (components.contains("PlayerInputComponent"))
@@ -59,6 +62,24 @@ void SceneManager::LoadScene(const std::string& path)
 					glm::vec3(transform["scale"][0], transform["scale"][1], transform["scale"][2])
 				}
 			);
+
+			if (components.contains("MeshSocketComponent"))
+			{
+				auto meshSocket = components["MeshSocketComponent"];
+
+				auto socketTransform = meshSocket["socketTransform"];
+
+				registry.emplace<MeshSocketComponent>(
+					entity,
+					MeshSocketComponent{
+						meshSocket["parentEntityName"],
+						meshSocket["nodeName"],
+						glm::vec3(socketTransform["position"][0], socketTransform["position"][1], socketTransform["position"][2]),
+						glm::vec3(socketTransform["rotation"][0], socketTransform["rotation"][1], socketTransform["rotation"][2]),
+						glm::vec3(socketTransform["scale"][0], socketTransform["scale"][1], socketTransform["scale"][2])
+					}
+				);
+			}
 
 			if (components.contains("DynamicRigidBody"))
 			{
@@ -168,6 +189,8 @@ void SceneManager::LoadModelFromFile(const std::string& path, const std::string&
 {
 	Model& model = models[modelName];
 
+	model.name = modelName;
+
 	model.customMaterialTextures = customMaterialTextures;
 
 	AssetImporter::Get().LoadModelFromFile(path.c_str(), model, vertices, indices, texturePaths);
@@ -178,80 +201,11 @@ void SceneManager::LoadAnimationToModel(const std::string& path, const std::stri
 	AssetImporter::Get().LoadAnimatonToModel(path.c_str(), models[modelName], animName);
 }
 
-void SceneManager::UpdateBoneTransforms(AnimationInstance& anim, Model& model, SceneNode& sceneNode, BoneTransformData& boneTransforms, glm::mat4 parentTransform)
+void SceneManager::UpdateBoneTransforms(std::vector<AnimationInstance> animations, Model& model, SceneNode** sceneNode, BoneTransformData& boneTransforms, glm::mat4 parentTransform, std::vector<float> blendFactors)
 {
-	std::string nodeName = sceneNode.name;
+	std::string nodeName = (*sceneNode)->name;
 
-	glm::mat4 nodeLocalTransform = sceneNode.localTransform;
-
-	Animation& animAsset = model.animations[anim.name];
-
-	if (animAsset.channels.find(nodeName) != animAsset.channels.end())
-	{
-		nodeLocalTransform = glm::translate(glm::mat4(1.0f), GetAnimationPosition(animAsset.channels[nodeName].positionKeys, anim.currentTime)) *
-			glm::toMat4(GetAnimationRotation(animAsset.channels[nodeName].rotationKeys, anim.currentTime)) *
-			glm::scale(glm::mat4(1.0f), GetAnimationScaling(animAsset.channels[nodeName].scalingKeys, anim.currentTime));
-	}
-
-	glm::mat4 globalTransform = parentTransform * nodeLocalTransform;
-
-	if (model.boneMap.find(nodeName) != model.boneMap.end())
-	{
-		int boneIndex = model.boneMap[nodeName].boneIndex;
-
-		boneTransforms.boneTransforms[boneIndex] = globalTransform * model.boneMap[nodeName].offsetMatrix;
-	}
-
-	for (int i = 0; i < sceneNode.children.size(); i++)
-	{
-		UpdateBoneTransforms(anim, model, sceneNode.children[i], boneTransforms, globalTransform);
-	}
-}
-
-void SceneManager::UpdateBoneTransforms(AnimationInstance& anim, AnimationInstance& anim2, Model& model, SceneNode& sceneNode, BoneTransformData& boneTransforms, glm::mat4 parentTransform, float blendFactor)
-{
-	//blend position, rotation, and scaling individually
-
-	std::string nodeName = sceneNode.name;
-
-	glm::mat4 nodeLocalTransform = sceneNode.localTransform;
-
-	Animation& animAsset1 = model.animations[anim.name];
-	Animation& animAsset2 = model.animations[anim2.name];
-
-	if (animAsset1.channels.find(nodeName) != animAsset1.channels.end() && animAsset2.channels.find(nodeName) != animAsset2.channels.end())
-	{
-		glm::vec3 position = glm::mix(GetAnimationPosition(animAsset1.channels[nodeName].positionKeys, anim.currentTime),
-			GetAnimationPosition(animAsset2.channels[nodeName].positionKeys, anim2.currentTime), blendFactor);
-
-		glm::quat rotation = glm::slerp(GetAnimationRotation(animAsset1.channels[nodeName].rotationKeys, anim.currentTime), GetAnimationRotation(animAsset2.channels[nodeName].rotationKeys, anim2.currentTime), blendFactor);
-
-		glm::vec3 scaling = glm::mix(GetAnimationScaling(animAsset1.channels[nodeName].scalingKeys, anim.currentTime),
-			GetAnimationScaling(animAsset2.channels[nodeName].scalingKeys, anim2.currentTime), blendFactor);
-
-		nodeLocalTransform = glm::translate(glm::mat4(1.0f), position) * glm::toMat4(rotation) * glm::scale(glm::mat4(1.0f), scaling);
-	}
-
-	glm::mat4 globalTransform = parentTransform * nodeLocalTransform;
-
-	if (model.boneMap.find(nodeName) != model.boneMap.end())
-	{
-		int boneIndex = model.boneMap[nodeName].boneIndex;
-
-		boneTransforms.boneTransforms[boneIndex] = globalTransform * model.boneMap[nodeName].offsetMatrix;
-	}
-
-	for (int i = 0; i < sceneNode.children.size(); i++)
-	{
-		UpdateBoneTransforms(anim, anim2, model, sceneNode.children[i], boneTransforms, globalTransform, blendFactor);
-	}
-}
-
-void SceneManager::UpdateBoneTransforms(std::vector<AnimationInstance> animations, Model& model, SceneNode& sceneNode, BoneTransformData& boneTransforms, glm::mat4 parentTransform, std::vector<float> blendFactors)
-{
-	std::string nodeName = sceneNode.name;
-
-	glm::mat4 nodeLocalTransform = sceneNode.localTransform;
+	glm::mat4 nodeLocalTransform = (*sceneNode)->localTransform;
 
 	glm::vec3 position(0.0f);
 	glm::quat rotation(0.0f, 0.0f, 0.0f, 0.0f);
@@ -287,6 +241,8 @@ void SceneManager::UpdateBoneTransforms(std::vector<AnimationInstance> animation
 
 	glm::mat4 globalTransform = parentTransform * nodeLocalTransform;
 
+	(*sceneNode)->globalTransform = globalTransform;
+
 	if (model.boneMap.find(nodeName) != model.boneMap.end())
 	{
 		int boneIndex = model.boneMap[nodeName].boneIndex;
@@ -294,9 +250,9 @@ void SceneManager::UpdateBoneTransforms(std::vector<AnimationInstance> animation
 		boneTransforms.boneTransforms[boneIndex] = globalTransform * model.boneMap[nodeName].offsetMatrix;
 	}
 
-	for (int i = 0; i < sceneNode.children.size(); i++)
+	for (int i = 0; i < (*sceneNode)->children.size(); i++)
 	{
-		UpdateBoneTransforms(animations, model, sceneNode.children[i], boneTransforms, globalTransform, blendFactors);
+		UpdateBoneTransforms(animations, model, &((*sceneNode)->children[i]), boneTransforms, globalTransform, blendFactors);
 	}
 }
 
@@ -383,8 +339,19 @@ void SceneManager::UpdateEntityInstances(EntityInstance* entityInstanceBuffer, s
 {
 	entt::basic_view view = registry.view<ModelComponent, TransformComponent>();
 
+	//entities that are attached to a socket
+	std::vector<entt::entity> socketEntities;
+
 	for (entt::entity entity : view) {
-		const ModelComponent& modelComp = view.get<ModelComponent>(entity);
+		//check if entity has a socket component
+
+		if (registry.all_of<MeshSocketComponent>(entity))
+		{
+			socketEntities.push_back(entity);
+			continue;
+		}
+
+		ModelComponent& modelComp = view.get<ModelComponent>(entity);
 		const TransformComponent& transformComp = view.get<TransformComponent>(entity);
 
 		glm::mat4 model = glm::mat4(1.0f);
@@ -401,6 +368,62 @@ void SceneManager::UpdateEntityInstances(EntityInstance* entityInstanceBuffer, s
 		model = glm::rotate(model, glm::radians(modelComp.localRotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
 		model = glm::scale(model, modelComp.localScale);
 
+		modelComp.modelMatrix = model;
+
+		EntityInstance data{};
+		data.model = model;
+		data.boneTransformBufferIndex = modelComp.boneTransformBufferIndex;
+
+		modelInstanceMap[modelComp.modelName].push_back(data);
+	}
+
+	for (entt::entity entity : socketEntities)
+	{
+		const MeshSocketComponent& socketComp = registry.get<MeshSocketComponent>(entity);
+
+		const TransformComponent& transformComp = registry.get<TransformComponent>(entity);
+
+		const ModelComponent& modelComp = registry.get<ModelComponent>(entity);
+
+		const ModelComponent& parentModelComp = registry.get<ModelComponent>(entityMap[socketComp.parentEntityName]);
+
+		Model& parentModel = models[parentModelComp.modelName];
+
+		SceneNode* node = parentModel.sceneRoot;
+
+		if (parentModel.nodeMap.find(socketComp.nodeName) != parentModel.nodeMap.end())
+		{
+			node = parentModel.nodeMap[socketComp.nodeName];
+		}
+		else
+		{
+			std::cout << "Node not found: " << socketComp.nodeName << std::endl;
+			continue;
+		}
+
+		glm::mat4 model = parentModelComp.modelMatrix * node->globalTransform;
+
+		model = glm::translate(model, socketComp.position);
+		model = glm::rotate(model, glm::radians(socketComp.rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
+		model = glm::rotate(model, glm::radians(socketComp.rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
+		model = glm::rotate(model, glm::radians(socketComp.rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
+		model = glm::scale(model, socketComp.scale);
+
+		model = glm::translate(model, transformComp.position);
+		model = glm::rotate(model, glm::radians(transformComp.rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
+		model = glm::rotate(model, glm::radians(transformComp.rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
+		model = glm::rotate(model, glm::radians(transformComp.rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
+		model = glm::scale(model, transformComp.scale);
+
+		model = glm::translate(model, modelComp.localPosition);
+		model = glm::rotate(model, glm::radians(modelComp.localRotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
+		model = glm::rotate(model, glm::radians(modelComp.localRotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
+		model = glm::rotate(model, glm::radians(modelComp.localRotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
+		model = glm::scale(model, modelComp.localScale);
+
+		//set scale as 1
+
+		model = glm::scale(model, glm::vec3(1 / parentModelComp.localScale.x, 1 / parentModelComp.localScale.y, 1 / parentModelComp.localScale.z));
 
 		EntityInstance data{};
 		data.model = model;
@@ -615,8 +638,6 @@ void SceneManager::ProcessAnimationController(Model& model, AnimationComponent& 
 
 			Animation& montageAnimAsset = model.animations[montageAnim.name];
 
-			std::cout << montageAnim.currentTime << " / " << montageAnimAsset.duration << std::endl;
-
 			if (montageAnim.currentTime >= montageAnimAsset.duration - (montage.blendOutDuration * montageAnimAsset.ticksPerSecond))
 			{
 				controller.isMontageBlendingOut = true;
@@ -737,7 +758,7 @@ void SceneManager::UpdateAnimationsWithBlending(Model& model, AnimationComponent
 		blendFactors.push_back(1.0f - montageBlendFactor);
 	}
 
-	UpdateBoneTransforms(animations, model, model.sceneRoot, boneTransforms, glm::mat4(1.0f), blendFactors);
+	UpdateBoneTransforms(animations, model, &(model.sceneRoot), boneTransforms, glm::mat4(1.0f), blendFactors);
 }
 
 AnimationController SceneManager::LoadAnimationController(const std::string& filepath)

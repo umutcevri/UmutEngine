@@ -106,5 +106,8 @@
     <None Include="config\PlayerAnimController.json">
       <Filter>Resource Files</Filter>
     </None>
+    <None Include="config\EnemyAnimController.json">
+      <Filter>Resource Files</Filter>
+    </None>
   </ItemGroup>
 </Project>

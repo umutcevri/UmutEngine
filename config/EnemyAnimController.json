@@ -1,0 +1,11 @@
+{
+  "name": "EnemyAnimController",
+  "states": [
+    {
+      "type": "State",
+      "name": "Idle",
+      "animationName": "Idle",
+      "isDefault": true
+    }
+  ]
+}

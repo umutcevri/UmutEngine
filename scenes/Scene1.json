@@ -9,6 +9,15 @@
         "name": "Knight",
         "file": "assets/Knight.fbx",
         "customMaterialTextures": {}
+      },
+      {
+        "name": "DragonKnight",
+        "file": "assets/DragonKnight.fbx"
+      },
+      {
+        "name": "Sword",
+        "file": "assets/Sword.fbx",
+        "customMaterialTextures": {}
       }
     ],
     "animations": [
@@ -26,6 +35,11 @@
         "name": "Attack1",
         "modelName": "Knight",
         "file": "assets/KnightAttack_PrimaryA.FBX"
+      },
+      {
+        "name": "Idle",
+        "modelName": "DragonKnight",
+        "file": "assets/DragonKnightRun.fbx"
       }
     ]
   },
@@ -34,23 +48,51 @@
       "name": "floor",
       "components": {
         "TransformComponent": {
-          "position": [ 0, 0, 0 ],
-          "rotation": [ 0, 0, 0 ],
-          "scale": [ 1, 1, 1 ]
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
         },
         "ModelComponent": {
           "modelName": "cube",
           "localTransform": {
-            "position": [ 0, -0.5, 0 ],
-            "rotation": [ 0, 0, 0 ],
-            "scale": [ 10, 1, 10 ]
+            "position": [
+              0,
+              -0.5,
+              0
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ],
+            "scale": [
+              20,
+              1,
+              20
+            ]
           }
         },
         "StaticRigidBody": {
           "mass": 0,
           "shape": {
             "type": "box",
-            "halfExtents": [ 5, 0.5, 5 ]
+            "halfExtents": [
+              10,
+              0.5,
+              10
+            ]
           }
         }
       }
@@ -59,33 +101,167 @@
       "name": "knight",
       "components": {
         "TransformComponent": {
-          "position": [ 0, 0, 0 ],
-          "rotation": [ 0, 0, 0 ],
-          "scale": [ 1, 1, 1 ]
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
         },
         "ModelComponent": {
           "modelName": "Knight",
           "localTransform": {
-            "position": [ 0, -0.5, 0 ],
-            "rotation": [ -90, 0, 0 ],
-            "scale": [ 0.01, 0.01, 0.01 ]
+            "position": [
+              0,
+              -0.5,
+              0
+            ],
+            "rotation": [
+              -90,
+              0,
+              0
+            ],
+            "scale": [
+              0.01,
+              0.01,
+              0.01
+            ]
           }
         },
         "CharacterController": {
           "speed": 5
         },
-        "PlayerInputComponent": {
-
-        },
+        "PlayerInputComponent": {},
         "CameraComponent": {
-          "offset": [ 0, 1, 0 ],
+          "offset": [
+            0,
+            1,
+            0
+          ],
           "armLength": 4,
           "type": "thirdPerson"
         },
         "AnimationComponent": {
-          "animControllerPath": "config/PlayerAnimController.json" 
+          "animControllerPath": "config/PlayerAnimController.json"
         }
       }
+    },
+    {
+      "name": "dragonKnight",
+      "components": {
+        "TransformComponent": {
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "ModelComponent": {
+          "modelName": "DragonKnight",
+          "localTransform": {
+            "position": [
+              0,
+              0,
+              0
+            ],
+            "rotation": [
+              -90,
+              0,
+              0
+            ],
+            "scale": [
+              0.01,
+              0.01,
+              0.01
+            ]
+          }
+        },
+        "AnimationComponent": {
+          "animControllerPath": "config/EnemyAnimController.json"
+        }
+      }
+    },
+    {
+        "name": "sword",
+        "components": {
+          "TransformComponent": {
+            "position": [
+              0,
+              0,
+              0
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          },
+          "ModelComponent": {
+            "modelName": "Sword",
+            "localTransform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            }
+          },
+          "MeshSocketComponent":{
+            "parentEntityName": "knight",
+            "nodeName": "hand_r",
+            "socketTransform": {
+              "position": [
+                -12.5,
+                -2.5,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            }
+          }
+        }
     }
   ]
 }

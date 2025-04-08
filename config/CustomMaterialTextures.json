@@ -29,6 +29,11 @@
       "materialName": "Armour_Cloth_Battered",
       "textureType": "diffuse",
       "texturePath": "textures/T_Armour_Battered_Cloth_BaseColor.png"
+    },
+    {
+        "materialName": "UV_LongSword",
+        "textureType": "diffuse",
+        "texturePath": "textures/UV_LongSword_BaseColor.png"
     }
   ]
 }

@@ -157,6 +157,7 @@
   <ItemGroup>
     <None Include="config\Config.json" />
     <None Include="config\CustomMaterialTextures.json" />
+    <None Include="config\EnemyAnimController.json" />
     <None Include="config\PlayerAnimController.json" />
     <None Include="README.md" />
     <None Include="scenes\Scene1.json" />

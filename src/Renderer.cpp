@@ -18,6 +18,7 @@
 #include "SceneManager.h"
 
 #include <chrono>
+#include <cctype>
 
 void URenderer::Init() {
     InitVulkan();
@@ -392,6 +393,10 @@ void URenderer::CreateDepthResources()
 void URenderer::CreateTextureImage(std::string texturePath)
 {
     std::string extension = texturePath.substr(texturePath.find_last_of(".") + 1);
+
+    for (char& c : extension) {
+        c = std::tolower(static_cast<unsigned char>(c));
+    }
 
     if (extension == "png" || extension == "jpg" || extension == "jpeg" || extension == "tga")
     {

@@ -19,7 +19,7 @@ void AssetImporter::LoadModelFromFile(const char* path, Model& model, std::vecto
 		return;
 	}
 
-	ProcessNode(scene->mRootNode, scene, model, model.sceneRoot, vertices, indices, texturePaths);
+	ProcessNode(scene->mRootNode, scene, model, &(model.sceneRoot), vertices, indices, texturePaths);
 
 	LoadAnimation(scene, model, "");
 }
@@ -89,13 +89,32 @@ void AssetImporter::LoadAnimation(const aiScene* scene, Model& model, std::strin
 	}
 }
 
-void AssetImporter::ProcessNode(aiNode* node, const aiScene* scene, Model& model, SceneNode& sceneNode, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, std::vector<std::string>& texturePaths, glm::mat4 parentTransform)
+void AssetImporter::ProcessNode(aiNode* node, const aiScene* scene, Model& model, SceneNode** sceneNode, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, std::vector<std::string>& texturePaths, glm::mat4 parentTransform)
 {
-	sceneNode.localTransform = aiMatrix4x4ToGlm(node->mTransformation);
+	*sceneNode = new SceneNode();
 
-	sceneNode.name = node->mName.C_Str();
+	if (model.sceneRoot == nullptr)
+	{
+		throw std::runtime_error("Scene root is null");
+	}
 
-	glm::mat4 globalTransform = parentTransform * sceneNode.localTransform;
+	(*sceneNode)->localTransform = aiMatrix4x4ToGlm(node->mTransformation);
+
+	std::string nodeName = node->mName.C_Str();
+
+	std::string prefix = "mixamorig:";
+
+	if (nodeName.compare(0, prefix.size(), prefix) == 0) {
+		nodeName.erase(0, prefix.size());
+	}
+
+	(*sceneNode)->name = nodeName;
+
+	model.nodeMap[nodeName] = (*sceneNode);
+
+	glm::mat4 globalTransform = parentTransform * (*sceneNode)->localTransform;
+
+	(*sceneNode)->globalTransform = globalTransform;
 
 	for (unsigned int i = 0; i < node->mNumMeshes; i++)
 	{
@@ -106,11 +125,11 @@ void AssetImporter::ProcessNode(aiNode* node, const aiScene* scene, Model& model
 		ProcessMesh(model.meshes.back(), mesh, scene, model, vertices, indices, texturePaths, globalTransform);
 	}
 
-	sceneNode.children.resize(node->mNumChildren);
+	(*sceneNode)->children.resize(node->mNumChildren);
 
 	for (unsigned int i = 0; i < node->mNumChildren; i++)
 	{
-		ProcessNode(node->mChildren[i], scene, model, sceneNode.children[i], vertices, indices, texturePaths, globalTransform);
+		ProcessNode(node->mChildren[i], scene, model, &((*sceneNode)->children[i]), vertices, indices, texturePaths, globalTransform);
 	}
 }
 
@@ -248,6 +267,12 @@ void AssetImporter::ExtractBoneWeights(std::vector<Vertex>& meshVertices, aiMesh
 		int boneIndex = -1;
 
 		std::string boneName = assimpMesh->mBones[i]->mName.C_Str();
+
+		std::string prefix = "mixamorig:";
+
+		if (boneName.compare(0, prefix.size(), prefix) == 0) {
+			boneName.erase(0, prefix.size());
+		}
 
 		if (model.boneMap.find(boneName) == model.boneMap.end())
 		{

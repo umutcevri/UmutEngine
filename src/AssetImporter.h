@@ -30,7 +30,7 @@ public:
 
 	void LoadAnimation(const aiScene* scene, Model& model, std::string name);
 
-	void ProcessNode(aiNode* node, const aiScene* scene, Model& model, SceneNode &sceneNode, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, std::vector<std::string>& texturePaths, glm::mat4 parentTransform = glm::mat4(1.0f));
+	void ProcessNode(aiNode* node, const aiScene* scene, Model& model, SceneNode** sceneNode, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, std::vector<std::string>& texturePaths, glm::mat4 parentTransform = glm::mat4(1.0f));
 
 	void ProcessMesh(Mesh &mesh, aiMesh* assimpMesh, const aiScene* scene, Model& model, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices, std::vector<std::string>& texturePaths, glm::mat4 globalTransform);
 

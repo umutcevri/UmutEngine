@@ -8,6 +8,19 @@
 
 const int MAX_BONES = 200;
 
+struct MeshSocketComponent
+{
+	//name of the entity that owns the node that this socket is attached to
+	std::string parentEntityName;
+
+	//name of the node that this socket is attached to
+	std::string nodeName;
+
+	glm::vec3 position;
+	glm::vec3 rotation;
+	glm::vec3 scale;
+};
+
 struct TransformComponent
 {
 	glm::vec3 position;
@@ -22,6 +35,7 @@ struct ModelComponent
 	glm::vec3 localPosition;
 	glm::vec3 localRotation;
 	glm::vec3 localScale;
+	glm::mat4 modelMatrix;
 };
 
 struct AnimationInstance
@@ -150,6 +164,9 @@ public:
 	//map of model name to model
 	std::unordered_map<std::string, Model> models;
 
+	//entity name to entity map
+	std::unordered_map<std::string, entt::entity> entityMap;
+
 	static SceneManager& Get()
 	{
 		static SceneManager instance;
@@ -162,11 +179,7 @@ public:
 
 	void LoadAnimationToModel(const std::string& path, const std::string& modelName, const std::string& animName);
 
-	void UpdateBoneTransforms(AnimationInstance& anim, Model& model, SceneNode &sceneNode, BoneTransformData& boneTransforms, glm::mat4 parentTransform);
-
-	void UpdateBoneTransforms(AnimationInstance& anim, AnimationInstance& anim2, Model& model, SceneNode& sceneNode, BoneTransformData& boneTransforms, glm::mat4 parentTransform, float blendFactor);
-
-	void UpdateBoneTransforms(std::vector<AnimationInstance> animations, Model& model, SceneNode& sceneNode, BoneTransformData& boneTransforms, glm::mat4 parentTransform, std::vector<float> blendFactors);
+	void UpdateBoneTransforms(std::vector<AnimationInstance> animations, Model& model, SceneNode** sceneNode, BoneTransformData& boneTransforms, glm::mat4 parentTransform, std::vector<float> blendFactors);
 
 	glm::vec3 GetAnimationPosition(std::vector<PositionKey>& keys, double currentTime);
 

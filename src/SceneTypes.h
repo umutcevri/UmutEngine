@@ -48,7 +48,9 @@ struct SceneNode
 
 	glm::mat4 localTransform;
 
-	std::vector<SceneNode> children;
+	glm::mat4 globalTransform;
+
+	std::vector<SceneNode*> children;
 };
 
 struct Bone 
@@ -63,6 +65,8 @@ struct Bone
 
 struct Model
 {
+	std::string name;
+
 	std::vector<Mesh> meshes;
 
 	//animation name to animation map
@@ -71,7 +75,10 @@ struct Model
 	//bone name to bone map
 	std::unordered_map<std::string, Bone> boneMap;
 
-	SceneNode sceneRoot;
+	//node name to node map
+	std::unordered_map<std::string, SceneNode*> nodeMap;
+
+	SceneNode* sceneRoot;
 
 	bool customMaterialTextures = false;
 };
